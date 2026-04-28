@@ -488,7 +488,7 @@ function ManualFoodEntry({ onAdd }: { onAdd: (food: any) => void }) {
   );
 }
 
-function NutritionScreen({ onBack }: { onBack: () => void }) {
+function NutritionScreen({ onBack, onProteinUpdate }: { onBack: () => void; onProteinUpdate?: (protein: number) => void }) {
   const [nutView, setNutView] = useState<'log' | 'search' | 'scan'>('log');
   const [activeMeal, setActiveMeal] = useState('Breakfast');
   const [logged, setLogged] = useState<any[]>([]);
@@ -574,14 +574,22 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
   }
 
   function addFood(food: any) {
-    setLogged(prev => [...prev, { ...food, meal: activeMeal, qty: 1 }]);
+    const updated = [...logged, { ...food, meal: activeMeal, qty: 1 }];
+    setLogged(updated);
+    const totalProtein = updated.reduce((acc, item) => acc + item.protein * item.qty, 0);
+    onProteinUpdate?.(totalProtein);
     setNutView('log');
     setSearchQuery('');
     setSearchResults([]);
     Keyboard.dismiss();
   }
 
-  function removeFood(idx: number) { setLogged(prev => prev.filter((_, i) => i !== idx)); }
+  function removeFood(idx: number) {
+    const updated = logged.filter((_, i) => i !== idx);
+    setLogged(updated);
+    const totalProtein = updated.reduce((acc, item) => acc + item.protein * item.qty, 0);
+    onProteinUpdate?.(totalProtein);
+  }
 
   const remainingProtein = GOALS.protein - totals.protein;
 
@@ -757,7 +765,7 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
 // TRAIN SCREEN
 // ============================================================
 
-function TrainScreen({ onBack, userId }: { onBack: () => void; userId: string }) {
+function TrainScreen({ onBack, userId, onWorkoutComplete }: { onBack: () => void; userId: string; onWorkoutComplete: () => void }) {
   const [trainView, setTrainView] = useState<'start' | 'session' | 'summary'>('start');
   const [exercises, setExercises] = useState<any[]>([]);
   const [sessionTimer, setSessionTimer] = useState(0);
@@ -826,6 +834,7 @@ function TrainScreen({ onBack, userId }: { onBack: () => void; userId: string })
         total_sets: totalSets,
         exercises: exercises,
       });
+      onWorkoutComplete();
     }
   }
 
@@ -1120,7 +1129,7 @@ const DEFAULT_SUPPLEMENTS: Supplement[] = [
 // SUPPLEMENT SCREEN
 // ============================================================
 
-function SupplementScreen({ onBack }: { onBack: () => void }) {
+function SupplementScreen({ onBack, onSuppsUpdate }: { onBack: () => void; onSuppsUpdate?: (taken: number, total: number) => void }) {
   const [supplements, setSupplements] = useState<Supplement[]>(DEFAULT_SUPPLEMENTS);
   const [activeGroup, setActiveGroup] = useState<'morning' | 'evening' | 'post-workout'>('morning');
   const [addModal, setAddModal] = useState(false);
@@ -1143,15 +1152,27 @@ function SupplementScreen({ onBack }: { onBack: () => void }) {
   const totalSupps = supplements.length;
 
   function toggleSupplement(id: string) {
-    setSupplements(prev => prev.map(s =>
-      s.id === id ? { ...s, taken: !s.taken, streak: !s.taken ? s.streak + 1 : s.streak } : s
-    ));
+    setSupplements(prev => {
+      const updated = prev.map(s =>
+        s.id === id ? { ...s, taken: !s.taken, streak: !s.taken ? s.streak + 1 : s.streak } : s
+      );
+      const morningTaken = updated.filter(s => s.timing === 'morning' && s.taken).length;
+      const morningTotal = updated.filter(s => s.timing === 'morning').length;
+      onSuppsUpdate?.(morningTaken, morningTotal);
+      return updated;
+    });
   }
 
   function logAll() {
-    setSupplements(prev => prev.map(s =>
-      s.timing === activeGroup ? { ...s, taken: true } : s
-    ));
+    setSupplements(prev => {
+      const updated = prev.map(s =>
+        s.timing === activeGroup ? { ...s, taken: true } : s
+      );
+      const morningTaken = updated.filter(s => s.timing === 'morning' && s.taken).length;
+      const morningTotal = updated.filter(s => s.timing === 'morning').length;
+      onSuppsUpdate?.(morningTaken, morningTotal);
+      return updated;
+    });
   }
 
   function addSupplement() {
@@ -1662,11 +1683,12 @@ const co = StyleSheet.create({
 // PROFILE SCREEN
 // ============================================================
 
-function ProfileScreen({ onBack, userId, character, coins, onSignOut }: {
+function ProfileScreen({ onBack, userId, character, coins, streak, onSignOut }: {
   onBack: () => void;
   userId: string;
   character: any;
   coins: number;
+  streak: number;
   onSignOut: () => void;
 }) {
   const [workoutCount, setWorkoutCount] = useState(0);
@@ -1727,6 +1749,7 @@ function ProfileScreen({ onBack, userId, character, coins, onSignOut }: {
           {[
             { label: 'Workouts', val: loading ? '—' : String(workoutCount), icon: '🏋️' },
             { label: 'Volume', val: loading ? '—' : `${(totalVolume / 1000).toFixed(1)}k`, icon: '📦' },
+            { label: 'Streak', val: `${streak}d`, icon: '🔥' },
             { label: 'Coins', val: coins.toLocaleString(), icon: '🪙' },
           ].map(stat => (
             <View key={stat.label} style={pr.statBox}>
@@ -1784,6 +1807,156 @@ const pr = StyleSheet.create({
   statLabel: { fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 },
   settingRow: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   settingText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#e8e8f0' },
+});
+
+// ============================================================
+// WORKOUT HISTORY SCREEN
+// ============================================================
+
+function WorkoutHistoryScreen({ onBack, userId }: { onBack: () => void; userId: string }) {
+  const [workouts, setWorkouts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => { loadWorkouts(); }, []);
+
+  async function loadWorkouts() {
+    setLoading(true);
+    const { data } = await supabase
+      .from('workouts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) setWorkouts(data);
+    setLoading(false);
+  }
+
+  function formatTime(secs: number) {
+    if (!secs) return '0:00';
+    return `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, '0')}`;
+  }
+
+  function formatDate(dateStr: string) {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+        <Text style={s.screenTitle}>HISTORY</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color="#c9a84c" size="large" />
+        </View>
+      ) : workouts.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 40, marginBottom: 16 }}>⚔️</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#e8e8f0', marginBottom: 8 }}>No workouts yet</Text>
+          <Text style={{ fontSize: 13, color: '#888899', textAlign: 'center' }}>Complete your first workout to see your history here.</Text>
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 10 }}>
+          {/* Summary stats */}
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 6 }}>
+            {[
+              { icon: '🏋️', label: 'Workouts', val: String(workouts.length) },
+              { icon: '📦', label: 'Total Volume', val: `${Math.round(workouts.reduce((a, w) => a + (w.total_volume || 0), 0) / 1000)}k lb` },
+              { icon: '⚡', label: 'Total XP', val: workouts.reduce((a, w) => a + (w.total_xp || 0), 0).toLocaleString() },
+            ].map(stat => (
+              <View key={stat.label} style={{ flex: 1, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                <Text style={{ fontSize: 18, marginBottom: 4 }}>{stat.icon}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#c9a84c' }}>{stat.val}</Text>
+                <Text style={{ fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          {workouts.map((workout) => {
+            const isExpanded = expanded === workout.id;
+            const exercises = workout.exercises || [];
+            return (
+              <TouchableOpacity
+                key={workout.id}
+                style={[wh.card, isExpanded && wh.cardExpanded]}
+                onPress={() => setExpanded(isExpanded ? null : workout.id)}
+                activeOpacity={0.8}
+              >
+                {/* Header row */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <View>
+                    <Text style={wh.date}>{formatDate(workout.created_at)}</Text>
+                    <Text style={wh.exerciseCount}>{exercises.length} exercises</Text>
+                  </View>
+                  <Text style={{ fontSize: 16, color: '#444' }}>{isExpanded ? '▲' : '▼'}</Text>
+                </View>
+
+                {/* Stats row */}
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  <View>
+                    <Text style={wh.statVal}>{formatTime(workout.duration)}</Text>
+                    <Text style={wh.statLabel}>Duration</Text>
+                  </View>
+                  <View>
+                    <Text style={wh.statVal}>{workout.total_sets || 0}</Text>
+                    <Text style={wh.statLabel}>Sets</Text>
+                  </View>
+                  <View>
+                    <Text style={wh.statVal}>{((workout.total_volume || 0) / 1000).toFixed(1)}k</Text>
+                    <Text style={wh.statLabel}>Volume lb</Text>
+                  </View>
+                  <View>
+                    <Text style={[wh.statVal, { color: '#c9a84c' }]}>+{workout.total_xp || 0}</Text>
+                    <Text style={wh.statLabel}>XP</Text>
+                  </View>
+                </View>
+
+                {/* Expanded exercise list */}
+                {isExpanded && exercises.length > 0 && (
+                  <View style={{ marginTop: 14, borderTopWidth: 1, borderTopColor: '#2a2a3a', paddingTop: 14, gap: 8 }}>
+                    {exercises.map((ex: any, i: number) => {
+                      const doneSets = (ex.sets || []).filter((s: any) => s.done);
+                      const bestSet = doneSets.reduce((best: any, curr: any) => {
+                        if (!best) return curr;
+                        return (parseFloat(curr.weight) || 0) > (parseFloat(best.weight) || 0) ? curr : best;
+                      }, null);
+                      return (
+                        <View key={i} style={wh.exRow}>
+                          <Text style={wh.exName} numberOfLines={1}>{ex.name}</Text>
+                          <Text style={wh.exDetail}>
+                            {doneSets.length} sets{bestSet ? ` · ${bestSet.weight}lb × ${bestSet.reps}` : ''}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const wh = StyleSheet.create({
+  card: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 16, padding: 16 },
+  cardExpanded: { borderColor: 'rgba(201,168,76,0.3)', backgroundColor: '#1a1508' },
+  date: { fontSize: 15, fontWeight: '700', color: '#e8e8f0', marginBottom: 2 },
+  exerciseCount: { fontSize: 11, color: '#888899' },
+  statVal: { fontSize: 16, fontWeight: '800', color: '#e8e8f0', marginBottom: 2 },
+  statLabel: { fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 },
+  exRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  exName: { fontSize: 13, fontWeight: '600', color: '#e8e8f0', flex: 1 },
+  exDetail: { fontSize: 11, color: '#888899' },
 });
 
 // ============================================================
@@ -2160,7 +2333,12 @@ const ob = StyleSheet.create({
 // ============================================================
 
 export default function HomeScreen() {
-  const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop' | 'supplements' | 'bodyweight' | 'coach' | 'profile'>('home');
+  const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop' | 'supplements' | 'bodyweight' | 'coach' | 'profile' | 'history'>('home');
+  const [streak, setStreak] = useState(0);
+  const [workoutDoneToday, setWorkoutDoneToday] = useState(false);
+  const [morningSuppsCount, setMorningSuppsCount] = useState(0);
+  const [morningSuppsTotal, setMorningSuppsTotal] = useState(4);
+  const [proteinToday, setProteinToday] = useState(0);
   const [coins, setCoins] = useState(1250);
   const [hasCharacter, setHasCharacter] = useState(false);
   const [character, setCharacter] = useState<CharacterData | null>(null);
@@ -2219,6 +2397,38 @@ export default function HomeScreen() {
       setCharacter({ name: data.name, classId: data.class_id, goalId: data.goal_id || '' });
       setCoins(data.coins || 1250);
       setHasCharacter(true);
+
+      // Streak logic
+      const today = new Date().toISOString().split('T')[0];
+      const lastLogin = data.last_login;
+      let newStreak = data.streak || 0;
+
+      if (!lastLogin) {
+        // First login ever
+        newStreak = 1;
+      } else if (lastLogin === today) {
+        // Already logged in today, keep streak
+        newStreak = data.streak || 1;
+      } else {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        if (lastLogin === yesterdayStr) {
+          // Logged in yesterday — increment
+          newStreak = (data.streak || 0) + 1;
+        } else {
+          // Missed a day — reset
+          newStreak = 1;
+        }
+      }
+
+      setStreak(newStreak);
+
+      // Save updated streak and last_login
+      await supabase.from('profiles').update({
+        streak: newStreak,
+        last_login: today,
+      }).eq('id', uid);
     }
   }
 
@@ -2249,14 +2459,15 @@ export default function HomeScreen() {
   const charDisplayName = character ? `${character.name} the ${classTitle}` : 'Warrior';
   const charClassLabel = chosenClass ? `${chosenClass.icon} ${chosenClass.name.toUpperCase()} CLASS` : '⚔ WARRIOR CLASS';
 
-  if (screen === 'train') return <TrainScreen onBack={() => setScreen('home')} userId={userId} />;
-  if (screen === 'nutrition') return <NutritionScreen onBack={() => setScreen('home')} />;
+  if (screen === 'train') return <TrainScreen onBack={() => setScreen('home')} userId={userId} onWorkoutComplete={() => setWorkoutDoneToday(true)} />;
+  if (screen === 'nutrition') return <NutritionScreen onBack={() => setScreen('home')} onProteinUpdate={(protein) => setProteinToday(protein)} />;
   if (screen === 'achievements') return <AchievementsScreen onBack={() => setScreen('home')} coins={coins} onEarn={earnCoins} />;
   if (screen === 'shop') return <ShopScreen onBack={() => setScreen('home')} coins={coins} onSpend={spendCoins} />;
-  if (screen === 'supplements') return <SupplementScreen onBack={() => setScreen('home')} />;
+  if (screen === 'supplements') return <SupplementScreen onBack={() => setScreen('home')} onSuppsUpdate={(taken, total) => { setMorningSuppsCount(taken); setMorningSuppsTotal(total); }} />;
   if (screen === 'bodyweight') return <BodyWeightScreen onBack={() => setScreen('home')} userId={userId} />;
   if (screen === 'coach') return <CoachScreen onBack={() => setScreen('home')} userId={userId} character={character} />;
-  if (screen === 'profile') return <ProfileScreen onBack={() => setScreen('home')} userId={userId} character={character} coins={coins} onSignOut={() => setScreen('home')} />;
+  if (screen === 'profile') return <ProfileScreen onBack={() => setScreen('home')} userId={userId} character={character} coins={coins} streak={streak} onSignOut={() => setScreen('home')} />;
+  if (screen === 'history') return <WorkoutHistoryScreen onBack={() => setScreen('home')} userId={userId} />;
 
   return (
     <View style={s.root}>
@@ -2269,7 +2480,7 @@ export default function HomeScreen() {
             <TouchableOpacity style={s.coinDisplay} onPress={() => setScreen('shop')}>
               <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
             </TouchableOpacity>
-            <View style={s.streakBadge}><Text style={s.streakText}>🔥 47</Text></View>
+            <View style={s.streakBadge}><Text style={s.streakText}>🔥 {streak}</Text></View>
             <TouchableOpacity onPress={() => setScreen('profile')}>
               <View style={[s.avatarCircle, { borderColor: chosenClass?.color || '#c9a84c', backgroundColor: chosenClass ? `${chosenClass.color}30` : '#8b2020' }]}>
                 <Text style={{ fontSize: 16 }}>{chosenClass?.icon || '⚔️'}</Text>
@@ -2327,6 +2538,10 @@ export default function HomeScreen() {
             <Text style={{ fontSize: 20 }}>🏆</Text>
             <Text style={s.quickActionText}>Achievements</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('history')}>
+            <Text style={{ fontSize: 20 }}>📋</Text>
+            <Text style={s.quickActionText}>History</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('bodyweight')}>
             <Text style={{ fontSize: 20 }}>⚖️</Text>
             <Text style={s.quickActionText}>Body Weight</Text>
@@ -2349,10 +2564,42 @@ export default function HomeScreen() {
             <Text style={{ fontSize: 11, color: '#c9a84c' }}>View All →</Text>
           </View>
           {[
-            { icon: '🏋️', name: 'Complete a Workout', sub: 'Start any training session', fill: 0.0, color: '#c94c4c', done: false, xp: '+500 XP' },
-            { icon: '🥩', name: 'Hit Protein Goal', sub: '0g / 200g consumed', fill: 0.0, color: '#4cc97a', done: false, xp: '+350 XP' },
-            { icon: '💊', name: 'Take Morning Stack', sub: 'Log your morning supplements', fill: 0.0, color: '#4c7bc9', done: false, xp: '+100 XP' },
-            { icon: '🏃', name: '10,000 Steps', sub: '0 / 10,000 steps', fill: 0.0, color: '#c9a84c', done: false, xp: '+150 XP' },
+            {
+              icon: '🏋️',
+              name: 'Complete a Workout',
+              sub: workoutDoneToday ? 'Workout complete!' : 'Start any training session',
+              fill: workoutDoneToday ? 1.0 : 0.0,
+              color: '#c94c4c',
+              done: workoutDoneToday,
+              xp: '+500 XP',
+            },
+            {
+              icon: '🥩',
+              name: 'Hit Protein Goal',
+              sub: `${Math.round(proteinToday)}g / ${GOALS.protein}g consumed`,
+              fill: Math.min(proteinToday / GOALS.protein, 1.0),
+              color: '#4cc97a',
+              done: proteinToday >= GOALS.protein,
+              xp: '+350 XP',
+            },
+            {
+              icon: '💊',
+              name: 'Take Morning Stack',
+              sub: morningSuppsTotal > 0 ? `${morningSuppsCount} / ${morningSuppsTotal} supplements taken` : 'Log your morning supplements',
+              fill: morningSuppsTotal > 0 ? morningSuppsCount / morningSuppsTotal : 0,
+              color: '#4c7bc9',
+              done: morningSuppsTotal > 0 && morningSuppsCount >= morningSuppsTotal,
+              xp: '+100 XP',
+            },
+            {
+              icon: '🏃',
+              name: '10,000 Steps',
+              sub: '0 / 10,000 steps',
+              fill: 0.0,
+              color: '#c9a84c',
+              done: false,
+              xp: '+150 XP',
+            },
           ].map((quest) => (
             <View key={quest.name} style={[s.questCard, quest.done && s.questDone]}>
               <Text style={{ fontSize: 22 }}>{quest.icon}</Text>
