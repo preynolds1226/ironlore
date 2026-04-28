@@ -163,25 +163,83 @@ const SHOP_ITEMS = {
 // ============================================================
 
 function AuthScreen({ onAuth }: { onAuth: () => void }) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'confirm' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmedEmail, setConfirmedEmail] = useState('');
 
   async function handleAuth() {
     if (!email.trim() || !password.trim()) { setError('Enter email and password.'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
     setLoading(true); setError('');
     try {
       if (mode === 'signup') {
         const { error: e } = await supabase.auth.signUp({ email: email.trim(), password });
-        if (e) { setError(e.message); } else { setMode('login'); setError('Check your email to confirm, then log in.'); }
+        if (e) { setError(e.message); }
+        else { setConfirmedEmail(email.trim()); setMode('confirm'); }
       } else {
         const { error: e } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (e) { setError(e.message); } else { onAuth(); }
+        if (e) {
+          if (e.message.includes('Email not confirmed')) {
+            setConfirmedEmail(email.trim());
+            setMode('confirm');
+          } else {
+            setError(e.message);
+          }
+        } else { onAuth(); }
       }
-    } catch { setError('Something went wrong.'); }
+    } catch { setError('Something went wrong. Check your connection.'); }
     setLoading(false);
+  }
+
+  async function handleResendConfirmation() {
+    setLoading(true);
+    const { error: e } = await supabase.auth.resend({ type: 'signup', email: confirmedEmail });
+    if (e) { setError(e.message); }
+    else { setError('Confirmation email resent!'); }
+    setLoading(false);
+  }
+
+  async function handlePasswordReset() {
+    if (!email.trim()) { setError('Enter your email first.'); return; }
+    setLoading(true);
+    const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim());
+    if (e) { setError(e.message); }
+    else { setError('Password reset email sent! Check your inbox.'); }
+    setLoading(false);
+  }
+
+  // Email confirmation screen
+  if (mode === 'confirm') {
+    return (
+      <View style={auth.root}>
+        <StatusBar style="light" />
+        <View style={auth.container}>
+          <Text style={{ fontSize: 56, textAlign: 'center', marginBottom: 20 }}>📬</Text>
+          <Text style={auth.logo}>CHECK YOUR EMAIL</Text>
+          <Text style={{ fontSize: 14, color: '#888899', textAlign: 'center', lineHeight: 22, marginBottom: 8 }}>
+            We sent a confirmation link to:
+          </Text>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: '#c9a84c', textAlign: 'center', marginBottom: 24 }}>
+            {confirmedEmail}
+          </Text>
+          <Text style={{ fontSize: 13, color: '#666677', textAlign: 'center', lineHeight: 20, marginBottom: 32 }}>
+            Click the link in the email to activate your account, then come back and log in.
+          </Text>
+          {error ? <Text style={[auth.error, { color: error.includes('resent') ? '#4cc97a' : '#f97316' }]}>{error}</Text> : null}
+          <TouchableOpacity style={auth.btn} onPress={() => { setMode('login'); setError(''); }}>
+            <Text style={auth.btnText}>GO TO LOGIN</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={{ marginTop: 16, alignItems: 'center' }} onPress={handleResendConfirmation} disabled={loading}>
+            <Text style={{ fontSize: 13, color: '#888899' }}>
+              {loading ? 'Sending...' : "Didn't get it? Resend email"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -191,19 +249,24 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
         <Text style={auth.logo}>IRONLORE</Text>
         <Text style={auth.tagline}>Your fitness journey becomes legend.</Text>
         <View style={auth.modeRow}>
-          <TouchableOpacity style={[auth.modeBtn, mode === 'login' && auth.modeBtnActive]} onPress={() => setMode('login')}>
+          <TouchableOpacity style={[auth.modeBtn, mode === 'login' && auth.modeBtnActive]} onPress={() => { setMode('login'); setError(''); }}>
             <Text style={[auth.modeBtnText, mode === 'login' && auth.modeBtnTextActive]}>Log In</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[auth.modeBtn, mode === 'signup' && auth.modeBtnActive]} onPress={() => setMode('signup')}>
+          <TouchableOpacity style={[auth.modeBtn, mode === 'signup' && auth.modeBtnActive]} onPress={() => { setMode('signup'); setError(''); }}>
             <Text style={[auth.modeBtnText, mode === 'signup' && auth.modeBtnTextActive]}>Sign Up</Text>
           </TouchableOpacity>
         </View>
         <TextInput style={auth.input} value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor="#444" autoCapitalize="none" keyboardType="email-address" />
-        <TextInput style={auth.input} value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor="#444" secureTextEntry />
+        <TextInput style={auth.input} value={password} onChangeText={setPassword} placeholder="Password (min 6 characters)" placeholderTextColor="#444" secureTextEntry />
         {error ? <Text style={auth.error}>{error}</Text> : null}
         <TouchableOpacity style={auth.btn} onPress={handleAuth} disabled={loading}>
           {loading ? <ActivityIndicator color="#0a0a0f" /> : <Text style={auth.btnText}>{mode === 'login' ? 'ENTER THE FORGE' : 'CREATE ACCOUNT'}</Text>}
         </TouchableOpacity>
+        {mode === 'login' && (
+          <TouchableOpacity style={{ marginTop: 16, alignItems: 'center' }} onPress={handlePasswordReset}>
+            <Text style={{ fontSize: 13, color: '#888899' }}>Forgot password?</Text>
+          </TouchableOpacity>
+        )}
         <Text style={auth.footer}>No ads. No selling your data. Ever.</Text>
       </View>
     </View>
@@ -213,7 +276,7 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
 const auth = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0f' },
   container: { flex: 1, justifyContent: 'center', padding: 28 },
-  logo: { fontSize: 38, fontWeight: '900', color: '#c9a84c', letterSpacing: 8, textAlign: 'center', marginBottom: 8 },
+  logo: { fontSize: 28, fontWeight: '900', color: '#c9a84c', letterSpacing: 4, textAlign: 'center', marginBottom: 8 },
   tagline: { fontSize: 13, color: '#888899', textAlign: 'center', fontStyle: 'italic', marginBottom: 36 },
   modeRow: { flexDirection: 'row', backgroundColor: '#12121a', borderRadius: 12, padding: 4, marginBottom: 20 },
   modeBtn: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
@@ -226,6 +289,107 @@ const auth = StyleSheet.create({
   btnText: { fontSize: 15, fontWeight: '900', color: '#0a0a0f', letterSpacing: 2 },
   footer: { fontSize: 11, color: '#333344', textAlign: 'center', marginTop: 20 },
 });
+
+// ============================================================
+// SETTINGS SCREEN
+// ============================================================
+
+function SettingsScreen({ onBack, userId, character, onUpdate }: {
+  onBack: () => void;
+  userId: string;
+  character: any;
+  onUpdate: (data: { name: string; goalId: string; calorieGoal: number; proteinGoal: number }) => void;
+}) {
+  const [name, setName] = useState(character?.name || '');
+  const [goalId, setGoalId] = useState(character?.goalId || '');
+  const [calorieGoal, setCalorieGoal] = useState('1800');
+  const [proteinGoal, setProteinGoal] = useState('200');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    await supabase.from('profiles').update({
+      name: name.trim(),
+      goal_id: goalId,
+    }).eq('id', userId);
+    onUpdate({ name: name.trim(), goalId, calorieGoal: parseInt(calorieGoal) || 1800, proteinGoal: parseInt(proteinGoal) || 200 });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+        <Text style={s.screenTitle}>SETTINGS</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
+
+        {/* Character */}
+        <Text style={[s.sectionTitle, { marginBottom: 10 }]}>CHARACTER</Text>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 12, color: '#888899', marginBottom: 6 }}>Warrior Name</Text>
+          <TextInput
+            style={s.modalInput}
+            value={name}
+            onChangeText={setName}
+            placeholder="Your name"
+            placeholderTextColor="#444"
+            maxLength={20}
+          />
+        </View>
+
+        {/* Goal Path */}
+        <Text style={[s.sectionTitle, { marginBottom: 10 }]}>GOAL PATH</Text>
+        <View style={{ gap: 8, marginBottom: 20 }}>
+          {GOAL_PATHS.map(goal => {
+            const active = goalId === goal.id;
+            return (
+              <TouchableOpacity
+                key={goal.id}
+                style={[{ backgroundColor: '#12121a', borderWidth: 1.5, borderColor: active ? goal.color : '#2a2a3a', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }, active && { backgroundColor: `${goal.color}0d` }]}
+                onPress={() => setGoalId(goal.id)}
+              >
+                <Text style={{ fontSize: 22 }}>{goal.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[{ fontSize: 14, fontWeight: '700', color: '#e8e8f0' }, active && { color: goal.color }]}>{goal.name}</Text>
+                  <Text style={{ fontSize: 11, color: '#888899' }}>{goal.desc}</Text>
+                </View>
+                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: active ? goal.color : '#2a2a3a', alignItems: 'center', justifyContent: 'center' }}>
+                  {active && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: goal.color }} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Nutrition goals */}
+        <Text style={[s.sectionTitle, { marginBottom: 10 }]}>NUTRITION GOALS</Text>
+        <View style={{ gap: 12, marginBottom: 24 }}>
+          <View>
+            <Text style={{ fontSize: 12, color: '#888899', marginBottom: 6 }}>Daily Calories</Text>
+            <TextInput style={s.modalInput} value={calorieGoal} onChangeText={setCalorieGoal} placeholder="1800" placeholderTextColor="#444" keyboardType="numeric" />
+          </View>
+          <View>
+            <Text style={{ fontSize: 12, color: '#888899', marginBottom: 6 }}>Daily Protein (g)</Text>
+            <TextInput style={s.modalInput} value={proteinGoal} onChangeText={setProteinGoal} placeholder="200" placeholderTextColor="#444" keyboardType="numeric" />
+          </View>
+        </View>
+
+        {/* Save button */}
+        <TouchableOpacity style={[s.finishBtn, saved && { backgroundColor: '#4cc97a' }]} onPress={handleSave} disabled={saving}>
+          {saving ? <ActivityIndicator color="#0a0a0f" /> : <Text style={s.finishText}>{saved ? '✓ Saved!' : 'Save Changes'}</Text>}
+        </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </View>
+  );
+}
 
 // ============================================================
 // ACHIEVEMENTS SCREEN
@@ -1683,13 +1847,14 @@ const co = StyleSheet.create({
 // PROFILE SCREEN
 // ============================================================
 
-function ProfileScreen({ onBack, userId, character, coins, streak, onSignOut }: {
+function ProfileScreen({ onBack, userId, character, coins, streak, onSignOut, onSettings }: {
   onBack: () => void;
   userId: string;
   character: any;
   coins: number;
   streak: number;
   onSignOut: () => void;
+  onSettings: () => void;
 }) {
   const [workoutCount, setWorkoutCount] = useState(0);
   const [totalVolume, setTotalVolume] = useState(0);
@@ -1782,12 +1947,16 @@ function ProfileScreen({ onBack, userId, character, coins, streak, onSignOut }: 
         {/* Settings */}
         <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
           <Text style={[s.sectionTitle, { marginBottom: 10 }]}>SETTINGS</Text>
+          <TouchableOpacity style={pr.settingRow} onPress={onSettings}>
+            <Text style={{ fontSize: 18 }}>⚙️</Text>
+            <Text style={pr.settingText}>Settings</Text>
+            <Text style={{ fontSize: 16, color: '#444' }}>›</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={pr.settingRow} onPress={handleSignOut}>
             <Text style={{ fontSize: 18 }}>🚪</Text>
             <Text style={pr.settingText}>Sign Out</Text>
             <Text style={{ fontSize: 16, color: '#444' }}>›</Text>
-          </TouchableOpacity>
-        </View>
+          </TouchableOpacity>        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -2333,7 +2502,7 @@ const ob = StyleSheet.create({
 // ============================================================
 
 export default function HomeScreen() {
-  const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop' | 'supplements' | 'bodyweight' | 'coach' | 'profile' | 'history'>('home');
+  const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop' | 'supplements' | 'bodyweight' | 'coach' | 'profile' | 'history' | 'settings'>('home');
   const [streak, setStreak] = useState(0);
   const [workoutDoneToday, setWorkoutDoneToday] = useState(false);
   const [morningSuppsCount, setMorningSuppsCount] = useState(0);
@@ -2466,8 +2635,9 @@ export default function HomeScreen() {
   if (screen === 'supplements') return <SupplementScreen onBack={() => setScreen('home')} onSuppsUpdate={(taken, total) => { setMorningSuppsCount(taken); setMorningSuppsTotal(total); }} />;
   if (screen === 'bodyweight') return <BodyWeightScreen onBack={() => setScreen('home')} userId={userId} />;
   if (screen === 'coach') return <CoachScreen onBack={() => setScreen('home')} userId={userId} character={character} />;
-  if (screen === 'profile') return <ProfileScreen onBack={() => setScreen('home')} userId={userId} character={character} coins={coins} streak={streak} onSignOut={() => setScreen('home')} />;
+  if (screen === 'profile') return <ProfileScreen onBack={() => setScreen('home')} userId={userId} character={character} coins={coins} streak={streak} onSignOut={() => setScreen('home')} onSettings={() => setScreen('settings')} />;
   if (screen === 'history') return <WorkoutHistoryScreen onBack={() => setScreen('home')} userId={userId} />;
+  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen('profile')} userId={userId} character={character} onUpdate={({ name, goalId }) => { setCharacter((prev: any) => ({ ...prev, name, goalId })); setScreen('profile'); }} />;
 
   return (
     <View style={s.root}>
