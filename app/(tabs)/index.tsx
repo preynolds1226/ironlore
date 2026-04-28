@@ -6,6 +6,17 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // ============================================================
 // SUPABASE CLIENT
@@ -440,12 +451,14 @@ function ShopScreen({ onBack, coins, onSpend }: { onBack: () => void; coins: num
 // ============================================================
 
 function NutritionScreen({ onBack }: { onBack: () => void }) {
-  const [nutView, setNutView] = useState<'log' | 'search'>('log');
+  const [nutView, setNutView] = useState<'log' | 'search' | 'scan'>('log');
   const [activeMeal, setActiveMeal] = useState('Breakfast');
   const [logged, setLogged] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const searchTimer = useRef<any>(null);
 
   const totals = logged.reduce((acc, item) => ({
@@ -479,6 +492,46 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
     setSearchQuery(text);
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => searchFood(text), 600);
+  }
+
+  async function handleBarcodeScan({ data }: { data: string }) {
+    if (scanned) return;
+    setScanned(true);
+    setNutView('search');
+    setSearching(true);
+    try {
+      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${data}.json`);
+      const json = await res.json();
+      if (json.status === 1 && json.product) {
+        const p = json.product;
+        const food = {
+          id: data,
+          name: p.product_name_en || p.product_name || 'Unknown Product',
+          calories: Math.round(p.nutriments?.['energy-kcal_100g'] || 0),
+          protein: Math.round(p.nutriments?.proteins_100g || 0),
+          carbs: Math.round(p.nutriments?.carbohydrates_100g || 0),
+          fat: Math.round(p.nutriments?.fat_100g || 0),
+          serving: '100g',
+        };
+        setSearchResults([food]);
+      } else {
+        Alert.alert('Not Found', 'Product not found in database.');
+        setSearchResults([]);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not scan product.');
+      setSearchResults([]);
+    }
+    setSearching(false);
+    setScanned(false);
+  }
+
+  async function openScanner() {
+    if (!cameraPermission?.granted) {
+      const { granted } = await requestCameraPermission();
+      if (!granted) { Alert.alert('Permission needed', 'Camera access is required to scan barcodes.'); return; }
+    }
+    setNutView('scan');
   }
 
   function addFood(food: any) {
@@ -551,9 +604,14 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <TouchableOpacity style={s.addFoodBtn} onPress={() => setNutView('search')}>
-            <Text style={s.addFoodText}>+ Add Food to {activeMeal}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 12 }}>
+            <TouchableOpacity style={[s.addFoodBtn, { flex: 1, marginBottom: 0 }]} onPress={() => setNutView('search')}>
+              <Text style={s.addFoodText}>+ Add Food</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.addFoodBtn, { marginBottom: 0, paddingHorizontal: 16, backgroundColor: 'rgba(201,168,76,0.15)' }]} onPress={openScanner}>
+              <Text style={s.addFoodText}>📷 Scan</Text>
+            </TouchableOpacity>
+          </View>
           <View style={{ paddingHorizontal: 16 }}>
             {logged.filter(item => item.meal === activeMeal).length === 0 ? (
               <View style={{ padding: 32, alignItems: 'center' }}>
@@ -577,12 +635,31 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
           </View>
           <View style={{ height: 40 }} />
         </ScrollView>
+      ) : nutView === 'scan' ? (
+        <View style={{ flex: 1 }}>
+          <CameraView
+            style={{ flex: 1 }}
+            facing="back"
+            onBarcodeScanned={handleBarcodeScan}
+          >
+            <View style={{ flex: 1, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center' }}>
+              <View style={{ width: 260, height: 160, borderWidth: 2, borderColor: '#c9a84c', borderRadius: 12, backgroundColor: 'transparent' }} />
+              <Text style={{ color: '#c9a84c', marginTop: 16, fontSize: 13, fontWeight: '600' }}>Point at a barcode</Text>
+            </View>
+          </CameraView>
+          <TouchableOpacity style={{ padding: 20, backgroundColor: '#0a0a0f', alignItems: 'center' }} onPress={() => setNutView('search')}>
+            <Text style={{ color: '#888899', fontSize: 14 }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <View style={{ flex: 1 }}>
           <View style={s.searchBar}>
             <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
             <TextInput style={s.searchInput} value={searchQuery} onChangeText={handleSearchInput} placeholder="Search foods..." placeholderTextColor="#444" autoFocus />
             {searchQuery.length > 0 && <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); }}><Text style={{ fontSize: 14, color: '#444', padding: 4 }}>✕</Text></TouchableOpacity>}
+            <TouchableOpacity onPress={openScanner} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(201,168,76,0.15)', borderRadius: 8, marginLeft: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#c9a84c' }}>SCAN</Text>
+            </TouchableOpacity>
           </View>
           <TouchableOpacity style={{ paddingHorizontal: 16, paddingBottom: 8 }} onPress={() => { setNutView('log'); setSearchQuery(''); setSearchResults([]); }}>
             <Text style={{ fontSize: 13, color: '#888899' }}>Cancel</Text>
@@ -636,7 +713,7 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
 // TRAIN SCREEN
 // ============================================================
 
-function TrainScreen({ onBack }: { onBack: () => void }) {
+function TrainScreen({ onBack, userId }: { onBack: () => void; userId: string }) {
   const [trainView, setTrainView] = useState<'start' | 'session' | 'summary'>('start');
   const [exercises, setExercises] = useState<any[]>([]);
   const [sessionTimer, setSessionTimer] = useState(0);
@@ -691,9 +768,21 @@ function TrainScreen({ onBack }: { onBack: () => void }) {
     setNewExerciseName(''); setAddExerciseModal(false);
   }
 
-  function finishWorkout() {
+  async function finishWorkout() {
     setFinalTime(sessionTimer);
     setTrainView('summary');
+    const totalSets = exercises.reduce((acc, ex) => acc + ex.sets.filter((s: any) => s.done).length, 0);
+    const totalVolume = exercises.reduce((acc, ex) => acc + ex.sets.filter((s: any) => s.done).reduce((a: number, set: any) => a + (parseFloat(set.weight) || 0) * (parseInt(set.reps) || 0), 0), 0);
+    if (userId && totalSets > 0) {
+      await supabase.from('workouts').insert({
+        user_id: userId,
+        duration: sessionTimer,
+        total_xp: totalXP,
+        total_volume: totalVolume,
+        total_sets: totalSets,
+        exercises: exercises,
+      });
+    }
   }
 
   // ── SUMMARY VIEW ──────────────────────────────────────────
@@ -2052,8 +2141,33 @@ export default function HomeScreen() {
         setCharacter(null);
       }
     });
+    registerForPushNotifications();
     return () => subscription.unsubscribe();
   }, []);
+
+  async function registerForPushNotifications() {
+    if (!Device.isDevice) return;
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') return;
+  }
+
+  async function scheduleCoachReminder(characterName: string, coachPersonality: string) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'IRONLORE',
+        body: coachPersonality === 'warrior' ? `${characterName}. The forge grows cold. You haven't trained today.` :
+          coachPersonality === 'berserker' ? `${characterName}!! GET UP. The iron is waiting. LET'S GO.` :
+          coachPersonality === 'ranger' ? `${characterName}, consistency is everything. Time to train.` :
+          `${characterName}, the body follows the mind. Return to your practice.`,
+      },
+      trigger: { hour: 18, minute: 0, repeats: true },
+    });
+  }
 
   async function loadProfile(uid: string) {
     const { data } = await supabase.from('profiles').select('*').eq('id', uid).single();
@@ -2091,7 +2205,7 @@ export default function HomeScreen() {
   const charDisplayName = character ? `${character.name} the ${classTitle}` : 'Warrior';
   const charClassLabel = chosenClass ? `${chosenClass.icon} ${chosenClass.name.toUpperCase()} CLASS` : '⚔ WARRIOR CLASS';
 
-  if (screen === 'train') return <TrainScreen onBack={() => setScreen('home')} />;
+  if (screen === 'train') return <TrainScreen onBack={() => setScreen('home')} userId={userId} />;
   if (screen === 'nutrition') return <NutritionScreen onBack={() => setScreen('home')} />;
   if (screen === 'achievements') return <AchievementsScreen onBack={() => setScreen('home')} coins={coins} onEarn={earnCoins} />;
   if (screen === 'shop') return <ShopScreen onBack={() => setScreen('home')} coins={coins} onSpend={spendCoins} />;
