@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ============================================================
 
 const SUPABASE_URL = 'https://blrvttulfyeoqromogfz.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_s1j14WFus3bkIeBh-roFVA_6ayQFtxy';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJscnZ0dHVsZnllb3Fyb21vZ2Z6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjgxOTIsImV4cCI6MjA5Mjk0NDE5Mn0.qVS81Q1cLxO5rBmAQTBwAgwYVr_fVkfJ6UZwd0s7Tb0';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
@@ -1418,20 +1418,21 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('https://blrvttulfyeoqromogfz.supabase.co/functions/v1/coach', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': 'YOUR_ANTHROPIC_KEY_HERE', 'anthropic-version': '2023-06-01' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJscnZ0dHVsZnllb3Fyb21vZ2Z6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjgxOTIsImV4cCI6MjA5Mjk0NDE5Mn0.qVS81Q1cLxO5rBmAQTBwAgwYVr_fVkfJ6UZwd0s7Tb0`,
+        },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 300,
-          system: systemPrompt,
+          systemPrompt,
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
         }),
       });
       const data = await res.json();
       const reply = data.content?.[0]?.text || "The forge is silent. Try again.";
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
-    } catch {
+    } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: "The connection to the Iron Realm was lost. Try again." }]);
     }
     setLoading(false);
