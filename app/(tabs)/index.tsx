@@ -2550,7 +2550,6 @@ export default function HomeScreen() {
         setCharacter(null);
       }
     });
-    registerForPushNotifications();
     return () => subscription.unsubscribe();
   }, []);
 
@@ -2558,20 +2557,19 @@ export default function HomeScreen() {
     AsyncStorage.getItem('cleanMode').then(val => {
       if (val === 'true') setCleanMode(true);
     });
+    // Register push notifications
+    if (Device.isDevice) {
+      Notifications.getPermissionsAsync().then(({ status }) => {
+        if (status !== 'granted') {
+          Notifications.requestPermissionsAsync();
+        }
+      });
+    }
   }, []);
 
   function toggleCleanMode(val: boolean) {
     setCleanMode(val);
     AsyncStorage.setItem('cleanMode', val ? 'true' : 'false');
-  }
-    if (!Device.isDevice) return;
-    const { status: existing } = await Notifications.getPermissionsAsync();
-    let finalStatus = existing;
-    if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') return;
   }
 
   async function scheduleCoachReminder(characterName: string, coachPersonality: string) {
