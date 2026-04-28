@@ -1,9 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  TextInput, Modal, Vibration, ActivityIndicator, Keyboard, Image
+  TextInput, Modal, Vibration, ActivityIndicator, Keyboard, Image, Alert
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ============================================================
+// SUPABASE CLIENT
+// ============================================================
+
+const SUPABASE_URL = 'https://blrvttulfyeoqromogfz.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_s1j14WFus3bkIeBh-roFVA_6ayQFtxy';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
 
 // ============================================================
 // CONSTANTS
@@ -130,6 +148,75 @@ const SHOP_ITEMS = {
 };
 
 // ============================================================
+// AUTH SCREEN
+// ============================================================
+
+function AuthScreen({ onAuth }: { onAuth: () => void }) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleAuth() {
+    if (!email.trim() || !password.trim()) { setError('Enter email and password.'); return; }
+    setLoading(true); setError('');
+    try {
+      if (mode === 'signup') {
+        const { error: e } = await supabase.auth.signUp({ email: email.trim(), password });
+        if (e) { setError(e.message); } else { setMode('login'); setError('Check your email to confirm, then log in.'); }
+      } else {
+        const { error: e } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (e) { setError(e.message); } else { onAuth(); }
+      }
+    } catch { setError('Something went wrong.'); }
+    setLoading(false);
+  }
+
+  return (
+    <View style={auth.root}>
+      <StatusBar style="light" />
+      <View style={auth.container}>
+        <Text style={auth.logo}>IRONLORE</Text>
+        <Text style={auth.tagline}>Your fitness journey becomes legend.</Text>
+        <View style={auth.modeRow}>
+          <TouchableOpacity style={[auth.modeBtn, mode === 'login' && auth.modeBtnActive]} onPress={() => setMode('login')}>
+            <Text style={[auth.modeBtnText, mode === 'login' && auth.modeBtnTextActive]}>Log In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[auth.modeBtn, mode === 'signup' && auth.modeBtnActive]} onPress={() => setMode('signup')}>
+            <Text style={[auth.modeBtnText, mode === 'signup' && auth.modeBtnTextActive]}>Sign Up</Text>
+          </TouchableOpacity>
+        </View>
+        <TextInput style={auth.input} value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor="#444" autoCapitalize="none" keyboardType="email-address" />
+        <TextInput style={auth.input} value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor="#444" secureTextEntry />
+        {error ? <Text style={auth.error}>{error}</Text> : null}
+        <TouchableOpacity style={auth.btn} onPress={handleAuth} disabled={loading}>
+          {loading ? <ActivityIndicator color="#0a0a0f" /> : <Text style={auth.btnText}>{mode === 'login' ? 'ENTER THE FORGE' : 'CREATE ACCOUNT'}</Text>}
+        </TouchableOpacity>
+        <Text style={auth.footer}>No ads. No selling your data. Ever.</Text>
+      </View>
+    </View>
+  );
+}
+
+const auth = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#0a0a0f' },
+  container: { flex: 1, justifyContent: 'center', padding: 28 },
+  logo: { fontSize: 38, fontWeight: '900', color: '#c9a84c', letterSpacing: 8, textAlign: 'center', marginBottom: 8 },
+  tagline: { fontSize: 13, color: '#888899', textAlign: 'center', fontStyle: 'italic', marginBottom: 36 },
+  modeRow: { flexDirection: 'row', backgroundColor: '#12121a', borderRadius: 12, padding: 4, marginBottom: 20 },
+  modeBtn: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
+  modeBtnActive: { backgroundColor: '#c9a84c' },
+  modeBtnText: { fontSize: 14, fontWeight: '700', color: '#888899' },
+  modeBtnTextActive: { color: '#0a0a0f' },
+  input: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 12, padding: 16, fontSize: 15, color: '#e8e8f0', marginBottom: 12 },
+  error: { fontSize: 12, color: '#f97316', textAlign: 'center', marginBottom: 12, lineHeight: 18 },
+  btn: { backgroundColor: '#c9a84c', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4 },
+  btnText: { fontSize: 15, fontWeight: '900', color: '#0a0a0f', letterSpacing: 2 },
+  footer: { fontSize: 11, color: '#333344', textAlign: 'center', marginTop: 20 },
+});
+
+// ============================================================
 // ACHIEVEMENTS SCREEN
 // ============================================================
 
@@ -191,8 +278,6 @@ function AchievementsScreen({ onBack, coins, onEarn }: { onBack: () => void; coi
           <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
         </View>
       </View>
-
-      {/* Progress bar */}
       <View style={s.achievementProgress2}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
           <Text style={{ fontSize: 12, color: '#888899' }}>{unlocked} / {total} unlocked</Text>
@@ -202,22 +287,15 @@ function AchievementsScreen({ onBack, coins, onEarn }: { onBack: () => void; coi
           <View style={{ height: '100%', backgroundColor: '#c9a84c', borderRadius: 3, width: `${(unlocked / total) * 100}%` as any }} />
         </View>
       </View>
-
-      {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabRow}>
         {tabs.map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[s.tab, activeTab === tab && s.tabActive]}
-            onPress={() => setActiveTab(tab)}
-          >
+          <TouchableOpacity key={tab} style={[s.tab, activeTab === tab && s.tabActive]} onPress={() => setActiveTab(tab)}>
             <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>
               {tab === 'featured' ? '⭐ Featured' : tab}
             </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
-
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ padding: 16, gap: 10 }}>
           {currentData.map((item: any) => renderAchievement(item, activeTab === 'featured'))}
@@ -275,34 +353,24 @@ function ShopScreen({ onBack, coins, onSpend }: { onBack: () => void; coins: num
           <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
         </View>
       </View>
-
-      {/* Category tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabRow}>
         {categories.map(cat => (
-          <TouchableOpacity
-            key={cat}
-            style={[s.tab, activeCategory === cat && s.tabActive]}
-            onPress={() => setActiveCategory(cat)}
-          >
+          <TouchableOpacity key={cat} style={[s.tab, activeCategory === cat && s.tabActive]} onPress={() => setActiveCategory(cat)}>
             <Text style={[s.tabText, activeCategory === cat && s.tabTextActive]}>{cat}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
-
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ padding: 16, gap: 12 }}>
           {items.map((item: any) => {
             const owned = ownedItems.includes(item.id);
             const equipped = equippedItems.includes(item.id);
             const canAfford = coins >= item.price;
-
             return (
               <View key={item.id} style={[s.shopCard, equipped && s.shopCardEquipped]}>
                 <View style={s.shopIconWrap}>
                   <Text style={s.shopIcon}>{item.icon}</Text>
-                  {equipped && (
-                    <View style={s.equippedDot} />
-                  )}
+                  {equipped && <View style={s.equippedDot} />}
                 </View>
                 <View style={s.shopContent}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -331,10 +399,7 @@ function ShopScreen({ onBack, coins, onSpend }: { onBack: () => void; coins: num
                       <Text style={s.equippedBtnText}>✓</Text>
                     </View>
                   ) : (
-                    <TouchableOpacity
-                      style={[s.buyBtn, !canAfford && s.buyBtnDisabled]}
-                      onPress={() => canAfford && buyItem(item)}
-                    >
+                    <TouchableOpacity style={[s.buyBtn, !canAfford && s.buyBtnDisabled]} onPress={() => canAfford && buyItem(item)}>
                       <Text style={s.buyBtnText}>Buy</Text>
                     </TouchableOpacity>
                   )}
@@ -345,8 +410,6 @@ function ShopScreen({ onBack, coins, onSpend }: { onBack: () => void; coins: num
         </View>
         <View style={{ height: 40 }} />
       </ScrollView>
-
-      {/* Confirm purchase modal */}
       <Modal visible={!!confirmModal} transparent animationType="fade">
         <View style={s.modalOverlay}>
           <View style={s.modal}>
@@ -574,9 +637,10 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
 // ============================================================
 
 function TrainScreen({ onBack }: { onBack: () => void }) {
-  const [trainView, setTrainView] = useState<'start' | 'session'>('start');
+  const [trainView, setTrainView] = useState<'start' | 'session' | 'summary'>('start');
   const [exercises, setExercises] = useState<any[]>([]);
   const [sessionTimer, setSessionTimer] = useState(0);
+  const [finalTime, setFinalTime] = useState(0);
   const [restTimer, setRestTimer] = useState(0);
   const [restActive, setRestActive] = useState(false);
   const [totalXP, setTotalXP] = useState(0);
@@ -587,6 +651,7 @@ function TrainScreen({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (trainView === 'session') { sessionRef.current = setInterval(() => setSessionTimer(t => t + 1), 1000); }
+    else { clearInterval(sessionRef.current); }
     return () => clearInterval(sessionRef.current);
   }, [trainView]);
 
@@ -626,6 +691,131 @@ function TrainScreen({ onBack }: { onBack: () => void }) {
     setNewExerciseName(''); setAddExerciseModal(false);
   }
 
+  function finishWorkout() {
+    setFinalTime(sessionTimer);
+    setTrainView('summary');
+  }
+
+  // ── SUMMARY VIEW ──────────────────────────────────────────
+  if (trainView === 'summary') {
+    const completedExercises = exercises.filter(ex => ex.sets.some((s: any) => s.done));
+    const totalSets = exercises.reduce((acc, ex) => acc + ex.sets.filter((s: any) => s.done).length, 0);
+    const totalVolume = exercises.reduce((acc, ex) => {
+      return acc + ex.sets.filter((s: any) => s.done).reduce((a: number, set: any) => {
+        return a + (parseFloat(set.weight) || 0) * (parseInt(set.reps) || 0);
+      }, 0);
+    }, 0);
+    const coinsEarned = totalSets * 10;
+    const prs = completedExercises.filter(ex => {
+      const bestDone = ex.sets.filter((s: any) => s.done).reduce((best: number, set: any) => {
+        return Math.max(best, parseFloat(set.weight) || 0);
+      }, 0);
+      return bestDone > parseFloat(ex.lastWeight || '0');
+    });
+
+    return (
+      <View style={s.root}>
+        <StatusBar style="light" />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+          {/* Hero banner */}
+          <View style={ws.heroBanner}>
+            <Text style={ws.heroIcon}>⚔️</Text>
+            <Text style={ws.heroTitle}>WORKOUT COMPLETE</Text>
+            <Text style={ws.heroSub}>The iron remembers your effort.</Text>
+          </View>
+
+          {/* Stats row */}
+          <View style={ws.statsRow}>
+            {[
+              { icon: '⏱', label: 'Duration', val: formatTime(finalTime) },
+              { icon: '🏋️', label: 'Sets', val: String(totalSets) },
+              { icon: '📦', label: 'Volume', val: `${totalVolume.toLocaleString()}lb` },
+            ].map(stat => (
+              <View key={stat.label} style={ws.statBox}>
+                <Text style={ws.statBoxIcon}>{stat.icon}</Text>
+                <Text style={ws.statBoxVal}>{stat.val}</Text>
+                <Text style={ws.statBoxLabel}>{stat.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* XP + Coins earned */}
+          <View style={ws.rewardsRow}>
+            <View style={ws.rewardCard}>
+              <Text style={ws.rewardIcon}>⚡</Text>
+              <Text style={ws.rewardVal}>+{totalXP}</Text>
+              <Text style={ws.rewardLabel}>XP EARNED</Text>
+            </View>
+            <View style={[ws.rewardCard, { borderColor: 'rgba(201,168,76,0.4)', backgroundColor: 'rgba(201,168,76,0.06)' }]}>
+              <Text style={ws.rewardIcon}>🪙</Text>
+              <Text style={[ws.rewardVal, { color: '#c9a84c' }]}>+{coinsEarned}</Text>
+              <Text style={ws.rewardLabel}>IRON COINS</Text>
+            </View>
+          </View>
+
+          {/* PRs */}
+          {prs.length > 0 && (
+            <View style={ws.section}>
+              <Text style={ws.sectionTitle}>🏆 PERSONAL RECORDS</Text>
+              {prs.map((ex, i) => {
+                const bestWeight = ex.sets.filter((s: any) => s.done).reduce((best: number, set: any) => Math.max(best, parseFloat(set.weight) || 0), 0);
+                const prev = parseFloat(ex.lastWeight || '0');
+                return (
+                  <View key={i} style={ws.prCard}>
+                    <View style={ws.prIconWrap}><Text style={{ fontSize: 20 }}>🔥</Text></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={ws.prName}>{ex.name}</Text>
+                      <Text style={ws.prDetail}>{prev}lb → {bestWeight}lb · +{Math.round(bestWeight - prev)}lb PR</Text>
+                    </View>
+                    <View style={ws.prBadge}><Text style={ws.prBadgeText}>NEW PR</Text></View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Exercise breakdown */}
+          <View style={ws.section}>
+            <Text style={ws.sectionTitle}>EXERCISE BREAKDOWN</Text>
+            {completedExercises.map((ex, i) => {
+              const doneSets = ex.sets.filter((s: any) => s.done);
+              const bestSet = doneSets.reduce((best: any, curr: any) => {
+                if (!best) return curr;
+                return (parseFloat(curr.weight) || 0) > (parseFloat(best.weight) || 0) ? curr : best;
+              }, null);
+              const est1RM = bestSet ? epley1RM(parseFloat(bestSet.weight) || 0, parseInt(bestSet.reps) || 0) : null;
+              const vol = doneSets.reduce((a: number, set: any) => a + (parseFloat(set.weight) || 0) * (parseInt(set.reps) || 0), 0);
+              return (
+                <View key={i} style={ws.exCard}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={ws.exName}>{ex.name}</Text>
+                    <Text style={{ fontSize: 11, color: '#888899' }}>{doneSets.length} sets</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 16 }}>
+                    {bestSet && <View><Text style={ws.exStatVal}>{bestSet.weight}lb × {bestSet.reps}</Text><Text style={ws.exStatLabel}>Best Set</Text></View>}
+                    {est1RM && <View><Text style={ws.exStatVal}>~{est1RM}lb</Text><Text style={ws.exStatLabel}>Est. 1RM</Text></View>}
+                    <View><Text style={ws.exStatVal}>{vol.toLocaleString()}lb</Text><Text style={ws.exStatLabel}>Volume</Text></View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Actions */}
+          <View style={{ paddingHorizontal: 16, gap: 10, marginTop: 8 }}>
+            <TouchableOpacity style={s.finishBtn} onPress={onBack}>
+              <Text style={s.finishText}>🏠 Back to Home</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={ws.secondaryBtn} onPress={() => setTrainView('start')}>
+              <Text style={ws.secondaryBtnText}>Start Another Workout</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ── START VIEW ────────────────────────────────────────────
   if (trainView === 'start') {
     return (
       <View style={s.root}>
@@ -652,6 +842,7 @@ function TrainScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
+  // ── SESSION VIEW ──────────────────────────────────────────
   return (
     <View style={s.root}>
       <StatusBar style="light" />
@@ -707,7 +898,7 @@ function TrainScreen({ onBack }: { onBack: () => void }) {
           <Text style={s.addExerciseText}>+ Add Exercise</Text>
         </TouchableOpacity>
         {exercises.length > 0 && (
-          <TouchableOpacity style={s.finishBtn} onPress={() => { setTrainView('start'); onBack(); }}>
+          <TouchableOpacity style={s.finishBtn} onPress={finishWorkout}>
             <Text style={s.finishText}>⚔ Finish Workout</Text>
           </TouchableOpacity>
         )}
@@ -730,20 +921,1183 @@ function TrainScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ============================================================
+// WORKOUT SUMMARY STYLES
+// ============================================================
+
+const ws = StyleSheet.create({
+  heroBanner: { backgroundColor: '#1a0e0e', borderBottomWidth: 1, borderBottomColor: 'rgba(201,168,76,0.2)', paddingTop: 60, paddingBottom: 28, alignItems: 'center', gap: 6 },
+  heroIcon: { fontSize: 48, marginBottom: 4 },
+  heroTitle: { fontSize: 26, fontWeight: '900', color: '#c9a84c', letterSpacing: 4 },
+  heroSub: { fontSize: 13, color: '#888899', fontStyle: 'italic' },
+  statsRow: { flexDirection: 'row', padding: 16, gap: 10 },
+  statBox: { flex: 1, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 14, alignItems: 'center', gap: 4 },
+  statBoxIcon: { fontSize: 20 },
+  statBoxVal: { fontSize: 18, fontWeight: '800', color: '#e8e8f0' },
+  statBoxLabel: { fontSize: 9, fontWeight: '600', color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 },
+  rewardsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 8 },
+  rewardCard: { flex: 1, backgroundColor: 'rgba(76,201,122,0.06)', borderWidth: 1, borderColor: 'rgba(76,201,122,0.3)', borderRadius: 14, padding: 16, alignItems: 'center', gap: 4 },
+  rewardIcon: { fontSize: 24 },
+  rewardVal: { fontSize: 24, fontWeight: '900', color: '#4cc97a' },
+  rewardLabel: { fontSize: 9, fontWeight: '700', color: '#888899', letterSpacing: 1 },
+  section: { paddingHorizontal: 16, marginBottom: 16 },
+  sectionTitle: { fontSize: 10, fontWeight: '700', color: '#888899', letterSpacing: 1, marginBottom: 10, marginTop: 8 },
+  prCard: { backgroundColor: '#1a1508', borderWidth: 1, borderColor: 'rgba(201,168,76,0.3)', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  prIconWrap: { width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.1)', alignItems: 'center', justifyContent: 'center' },
+  prName: { fontSize: 14, fontWeight: '700', color: '#e8e8f0', marginBottom: 2 },
+  prDetail: { fontSize: 12, color: '#c9a84c' },
+  prBadge: { backgroundColor: '#c9a84c', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  prBadgeText: { fontSize: 9, fontWeight: '900', color: '#0a0a0f', letterSpacing: 1 },
+  exCard: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 14, marginBottom: 8 },
+  exName: { fontSize: 14, fontWeight: '700', color: '#e8e8f0' },
+  exStatVal: { fontSize: 14, fontWeight: '700', color: '#c9a84c', marginBottom: 2 },
+  exStatLabel: { fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 },
+  secondaryBtn: { padding: 14, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, alignItems: 'center' },
+  secondaryBtnText: { fontSize: 14, fontWeight: '600', color: '#888899' },
+});
+
+// ============================================================
+// SUPPLEMENT DATA
+// ============================================================
+
+type Supplement = {
+  id: string;
+  name: string;
+  dose: string;
+  purpose: string;
+  timing: 'morning' | 'evening' | 'post-workout';
+  taken: boolean;
+  streak: number;
+  icon: string;
+};
+
+const DEFAULT_SUPPLEMENTS: Supplement[] = [
+  { id: 'sup1', name: 'Zinc', dose: '30mg', purpose: 'Testosterone support, immune function', timing: 'morning', taken: false, streak: 12, icon: '🔵' },
+  { id: 'sup2', name: 'Vitamin D3', dose: '5000 IU', purpose: 'Hormone optimization, bone health', timing: 'morning', taken: false, streak: 23, icon: '☀️' },
+  { id: 'sup3', name: 'Omega-3', dose: '2g', purpose: 'Anti-inflammation, joint health', timing: 'morning', taken: false, streak: 8, icon: '🐟' },
+  { id: 'sup4', name: 'Creatine', dose: '5g', purpose: 'Strength and power output', timing: 'morning', taken: false, streak: 31, icon: '⚡' },
+  { id: 'sup5', name: 'Magnesium Glycinate', dose: '400mg', purpose: 'Sleep quality, muscle recovery', timing: 'evening', taken: false, streak: 17, icon: '🌙' },
+  { id: 'sup6', name: 'Ashwagandha', dose: '600mg', purpose: 'Cortisol reduction, stress relief', timing: 'evening', taken: false, streak: 5, icon: '🌿' },
+  { id: 'sup7', name: 'CJC-1295', dose: '100mcg', purpose: 'Growth hormone peptide', timing: 'evening', taken: false, streak: 9, icon: '💉' },
+  { id: 'sup8', name: 'Ipamorelin', dose: '100mcg', purpose: 'GH secretagogue, recovery', timing: 'evening', taken: false, streak: 9, icon: '💉' },
+  { id: 'sup9', name: 'Whey Protein', dose: '50g', purpose: 'Muscle protein synthesis', timing: 'post-workout', taken: false, streak: 28, icon: '🥛' },
+  { id: 'sup10', name: 'L-Glutamine', dose: '5g', purpose: 'Gut health, recovery', timing: 'post-workout', taken: false, streak: 14, icon: '💊' },
+];
+
+// ============================================================
+// SUPPLEMENT SCREEN
+// ============================================================
+
+function SupplementScreen({ onBack }: { onBack: () => void }) {
+  const [supplements, setSupplements] = useState<Supplement[]>(DEFAULT_SUPPLEMENTS);
+  const [activeGroup, setActiveGroup] = useState<'morning' | 'evening' | 'post-workout'>('morning');
+  const [addModal, setAddModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDose, setNewDose] = useState('');
+  const [newPurpose, setNewPurpose] = useState('');
+  const [newTiming, setNewTiming] = useState<'morning' | 'evening' | 'post-workout'>('morning');
+
+  const groups = [
+    { key: 'morning' as const, label: 'Morning', icon: '🌅', color: '#c9a84c' },
+    { key: 'evening' as const, label: 'Evening', icon: '🌙', color: '#7ab0e8' },
+    { key: 'post-workout' as const, label: 'Post-Workout', icon: '💪', color: '#4cc97a' },
+  ];
+
+  const activeGroupData = groups.find(g => g.key === activeGroup)!;
+  const groupSupps = supplements.filter(s => s.timing === activeGroup);
+  const takenCount = groupSupps.filter(s => s.taken).length;
+  const allTaken = takenCount === groupSupps.length && groupSupps.length > 0;
+  const totalTaken = supplements.filter(s => s.taken).length;
+  const totalSupps = supplements.length;
+
+  function toggleSupplement(id: string) {
+    setSupplements(prev => prev.map(s =>
+      s.id === id ? { ...s, taken: !s.taken, streak: !s.taken ? s.streak + 1 : s.streak } : s
+    ));
+  }
+
+  function logAll() {
+    setSupplements(prev => prev.map(s =>
+      s.timing === activeGroup ? { ...s, taken: true } : s
+    ));
+  }
+
+  function addSupplement() {
+    if (!newName.trim()) return;
+    const newSupp: Supplement = {
+      id: `sup_${Date.now()}`,
+      name: newName.trim(),
+      dose: newDose.trim() || '—',
+      purpose: newPurpose.trim() || 'Custom supplement',
+      timing: newTiming,
+      taken: false,
+      streak: 0,
+      icon: newTiming === 'morning' ? '🔶' : newTiming === 'evening' ? '🔷' : '🟢',
+    };
+    setSupplements(prev => [...prev, newSupp]);
+    setNewName(''); setNewDose(''); setNewPurpose(''); setAddModal(false);
+  }
+
+  function removeSupplement(id: string) {
+    setSupplements(prev => prev.filter(s => s.id !== id));
+  }
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+        <Text style={s.screenTitle}>SUPPLEMENTS</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+          <Text style={{ fontSize: 12, color: '#888899' }}>{totalTaken} / {totalSupps} taken today</Text>
+          <Text style={{ fontSize: 12, color: '#c9a84c', fontWeight: '700' }}>{totalSupps > 0 ? Math.round((totalTaken / totalSupps) * 100) : 0}%</Text>
+        </View>
+        <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+          <View style={{ height: '100%', backgroundColor: '#c9a84c', borderRadius: 3, width: `${totalSupps > 0 ? (totalTaken / totalSupps) * 100 : 0}%` as any }} />
+        </View>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabRow}>
+        {groups.map(g => {
+          const gTaken = supplements.filter(s => s.timing === g.key && s.taken).length;
+          const gTotal = supplements.filter(s => s.timing === g.key).length;
+          const active = activeGroup === g.key;
+          return (
+            <TouchableOpacity
+              key={g.key}
+              style={[s.tab, active && { borderColor: `${g.color}66`, backgroundColor: `${g.color}12` }]}
+              onPress={() => setActiveGroup(g.key)}
+            >
+              <Text style={[s.tabText, active && { color: g.color }]}>{g.icon} {g.label}</Text>
+              <Text style={{ fontSize: 10, color: active ? g.color : '#444', marginTop: 2 }}>{gTaken}/{gTotal}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {!allTaken && groupSupps.length > 0 && (
+          <TouchableOpacity style={sup.logAllBtn} onPress={logAll}>
+            <Text style={{ fontSize: 16 }}>{activeGroupData.icon}</Text>
+            <Text style={[sup.logAllText, { color: activeGroupData.color }]}>Log Entire {activeGroupData.label} Stack</Text>
+          </TouchableOpacity>
+        )}
+        {allTaken && (
+          <View style={sup.allDoneBanner}>
+            <Text style={sup.allDoneText}>✓ {activeGroupData.label} stack complete!</Text>
+          </View>
+        )}
+        <View style={{ padding: 16, gap: 10 }}>
+          {groupSupps.map(supp => (
+            <View key={supp.id} style={[sup.suppCard, supp.taken && sup.suppCardTaken]}>
+              <TouchableOpacity
+                style={[sup.checkCircle, supp.taken && { backgroundColor: activeGroupData.color, borderColor: activeGroupData.color }]}
+                onPress={() => toggleSupplement(supp.id)}
+              >
+                {supp.taken && <Text style={sup.checkMark}>✓</Text>}
+              </TouchableOpacity>
+              <View style={sup.suppIconWrap}>
+                <Text style={{ fontSize: 22 }}>{supp.icon}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <Text style={[sup.suppName, supp.taken && { color: '#888899' }]}>{supp.name}</Text>
+                  <View style={sup.doseBadge}><Text style={sup.doseText}>{supp.dose}</Text></View>
+                </View>
+                <Text style={sup.suppPurpose} numberOfLines={1}>{supp.purpose}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                  <Text style={{ fontSize: 10 }}>🔥</Text>
+                  <Text style={sup.streakText}>{supp.streak} day streak</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => removeSupplement(supp.id)} style={{ padding: 4 }}>
+                <Text style={{ fontSize: 14, color: '#333344' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity style={sup.addBtn} onPress={() => { setNewTiming(activeGroup); setAddModal(true); }}>
+          <Text style={sup.addBtnText}>+ Add Supplement to {activeGroupData.label}</Text>
+        </TouchableOpacity>
+        <View style={{ height: 40 }} />
+      </ScrollView>
+      <Modal visible={addModal} transparent animationType="slide">
+        <View style={s.modalOverlay}>
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Add Supplement</Text>
+            <Text style={sup.inputLabel}>NAME</Text>
+            <TextInput style={s.modalInput} value={newName} onChangeText={setNewName} placeholder="e.g. Vitamin C" placeholderTextColor="#444" autoFocus />
+            <Text style={sup.inputLabel}>DOSE</Text>
+            <TextInput style={s.modalInput} value={newDose} onChangeText={setNewDose} placeholder="e.g. 1000mg" placeholderTextColor="#444" />
+            <Text style={sup.inputLabel}>PURPOSE</Text>
+            <TextInput style={s.modalInput} value={newPurpose} onChangeText={setNewPurpose} placeholder="e.g. Immune support" placeholderTextColor="#444" />
+            <Text style={sup.inputLabel}>TIMING</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {groups.map(g => (
+                <TouchableOpacity
+                  key={g.key}
+                  style={[sup.timingBtn, newTiming === g.key && { borderColor: g.color, backgroundColor: `${g.color}15` }]}
+                  onPress={() => setNewTiming(g.key)}
+                >
+                  <Text style={[sup.timingBtnText, newTiming === g.key && { color: g.color }]}>{g.icon} {g.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalCancel} onPress={() => setAddModal(false)}>
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.modalSave} onPress={addSupplement}>
+                <Text style={s.modalSaveText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// ============================================================
+// SUPPLEMENT STYLES
+// ============================================================
+
+const sup = StyleSheet.create({
+  logAllBtn: { marginHorizontal: 16, marginBottom: 4, padding: 14, backgroundColor: 'rgba(201,168,76,0.08)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)', borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center' },
+  logAllText: { fontSize: 14, fontWeight: '700' },
+  allDoneBanner: { marginHorizontal: 16, marginBottom: 4, padding: 12, backgroundColor: 'rgba(76,201,122,0.08)', borderWidth: 1, borderColor: 'rgba(76,201,122,0.25)', borderRadius: 12, alignItems: 'center' },
+  allDoneText: { fontSize: 13, fontWeight: '700', color: '#4cc97a' },
+  suppCard: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  suppCardTaken: { opacity: 0.6, borderColor: 'rgba(76,201,122,0.15)' },
+  checkCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#2a2a3a', alignItems: 'center', justifyContent: 'center' },
+  checkMark: { fontSize: 13, color: '#0a0a0f', fontWeight: '700' },
+  suppIconWrap: { width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' },
+  suppName: { fontSize: 14, fontWeight: '700', color: '#e8e8f0' },
+  doseBadge: { backgroundColor: 'rgba(201,168,76,0.1)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  doseText: { fontSize: 10, fontWeight: '600', color: '#c9a84c' },
+  suppPurpose: { fontSize: 11, color: '#888899' },
+  streakText: { fontSize: 11, color: '#c9a84c', fontWeight: '600' },
+  addBtn: { marginHorizontal: 16, marginTop: 4, padding: 14, borderWidth: 1.5, borderColor: '#2a2a3a', borderStyle: 'dashed', borderRadius: 12, alignItems: 'center' },
+  addBtnText: { fontSize: 13, fontWeight: '600', color: '#888899' },
+  inputLabel: { fontSize: 10, fontWeight: '600', color: '#444455', letterSpacing: 1, marginBottom: 6 },
+  timingBtn: { flex: 1, padding: 8, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 8, alignItems: 'center' },
+  timingBtnText: { fontSize: 11, fontWeight: '600', color: '#888899' },
+});
+
+// ============================================================
+// BODY WEIGHT SCREEN
+// ============================================================
+
+function BodyWeightScreen({ onBack, userId }: { onBack: () => void; userId: string }) {
+  const [entries, setEntries] = useState<{ id: string; weight: number; date: string }[]>([]);
+  const [newWeight, setNewWeight] = useState('');
+  const [goalWeight, setGoalWeight] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { loadEntries(); }, []);
+
+  async function loadEntries() {
+    setLoading(true);
+    const { data } = await supabase
+      .from('body_weight')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(30);
+    if (data) setEntries(data);
+    setLoading(false);
+  }
+
+  async function logWeight() {
+    if (!newWeight.trim() || isNaN(parseFloat(newWeight))) return;
+    setSaving(true);
+    const { data, error } = await supabase.from('body_weight').insert({
+      user_id: userId,
+      weight: parseFloat(newWeight),
+      date: new Date().toISOString().split('T')[0],
+    }).select().single();
+    if (data) setEntries(prev => [data, ...prev]);
+    setNewWeight('');
+    setSaving(false);
+  }
+
+  async function deleteEntry(id: string) {
+    await supabase.from('body_weight').delete().eq('id', id);
+    setEntries(prev => prev.filter(e => e.id !== id));
+  }
+
+  const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const latest = sorted[sorted.length - 1]?.weight;
+  const earliest = sorted[0]?.weight;
+  const change = latest && earliest ? latest - earliest : null;
+  const goal = goalWeight ? parseFloat(goalWeight) : null;
+
+  // Simple bar chart
+  const maxW = sorted.length ? Math.max(...sorted.map(e => e.weight)) : 1;
+  const minW = sorted.length ? Math.min(...sorted.map(e => e.weight)) : 0;
+  const range = maxW - minW || 1;
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+        <Text style={s.screenTitle}>BODY WEIGHT</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Log new weight */}
+        <View style={{ padding: 16 }}>
+          <View style={bw.logCard}>
+            <Text style={bw.logLabel}>LOG TODAY'S WEIGHT</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TextInput
+                style={[s.modalInput, { flex: 1, marginBottom: 0 }]}
+                value={newWeight}
+                onChangeText={setNewWeight}
+                placeholder="e.g. 185.5"
+                placeholderTextColor="#444"
+                keyboardType="numeric"
+              />
+              <TouchableOpacity style={bw.logBtn} onPress={logWeight} disabled={saving}>
+                {saving ? <ActivityIndicator color="#0a0a0f" size="small" /> : <Text style={bw.logBtnText}>Log</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Stats */}
+          {entries.length > 0 && (
+            <View style={bw.statsRow}>
+              <View style={bw.statBox}>
+                <Text style={bw.statVal}>{latest}lb</Text>
+                <Text style={bw.statLabel}>Current</Text>
+              </View>
+              {change !== null && (
+                <View style={bw.statBox}>
+                  <Text style={[bw.statVal, { color: change < 0 ? '#4cc97a' : change > 0 ? '#ef4444' : '#888899' }]}>
+                    {change > 0 ? '+' : ''}{change.toFixed(1)}lb
+                  </Text>
+                  <Text style={bw.statLabel}>Total Change</Text>
+                </View>
+              )}
+              {goal && latest && (
+                <View style={bw.statBox}>
+                  <Text style={[bw.statVal, { color: '#c9a84c' }]}>{Math.abs(latest - goal).toFixed(1)}lb</Text>
+                  <Text style={bw.statLabel}>To Goal</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Goal input */}
+          <View style={bw.goalRow}>
+            <Text style={{ fontSize: 12, color: '#888899', flex: 1 }}>Goal weight (optional)</Text>
+            <TextInput
+              style={bw.goalInput}
+              value={goalWeight}
+              onChangeText={setGoalWeight}
+              placeholder="lbs"
+              placeholderTextColor="#444"
+              keyboardType="numeric"
+            />
+          </View>
+
+          {/* Trend chart */}
+          {sorted.length > 1 && (
+            <View style={bw.chartCard}>
+              <Text style={bw.chartTitle}>30-DAY TREND</Text>
+              <View style={bw.chartBars}>
+                {sorted.slice(-14).map((entry, i) => {
+                  const h = Math.max(((entry.weight - minW) / range) * 80 + 10, 10);
+                  const isLatest = i === sorted.slice(-14).length - 1;
+                  return (
+                    <View key={entry.id} style={{ alignItems: 'center', flex: 1 }}>
+                      <Text style={{ fontSize: 8, color: isLatest ? '#c9a84c' : '#333344', marginBottom: 2 }}>
+                        {isLatest ? `${entry.weight}` : ''}
+                      </Text>
+                      <View style={[bw.bar, { height: h, backgroundColor: isLatest ? '#c9a84c' : '#2a2a3a' }]} />
+                      <Text style={{ fontSize: 7, color: '#333344', marginTop: 2 }}>
+                        {entry.date.slice(5)}
+                      </Text>
+                    </View>
+                  );
+                })}
+                {goal && (
+                  <View style={[bw.goalLine, { bottom: Math.max(((goal - minW) / range) * 80 + 10, 10) + 16 }]} />
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Log history */}
+          <Text style={[s.sectionTitle, { marginTop: 16, marginBottom: 10 }]}>HISTORY</Text>
+          {loading ? <ActivityIndicator color="#c9a84c" style={{ padding: 20 }} /> :
+            entries.length === 0 ? (
+              <Text style={{ color: '#444', textAlign: 'center', padding: 20 }}>No entries yet. Log your first weight above.</Text>
+            ) : (
+              entries.map(entry => (
+                <View key={entry.id} style={bw.entryRow}>
+                  <Text style={bw.entryDate}>{entry.date}</Text>
+                  <Text style={bw.entryWeight}>{entry.weight} lb</Text>
+                  <TouchableOpacity onPress={() => deleteEntry(entry.id)}>
+                    <Text style={{ fontSize: 14, color: '#333344' }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )
+          }
+        </View>
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const bw = StyleSheet.create({
+  logCard: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 16, padding: 16, marginBottom: 12 },
+  logLabel: { fontSize: 10, fontWeight: '700', color: '#888899', letterSpacing: 1 },
+  logBtn: { backgroundColor: '#c9a84c', borderRadius: 10, paddingHorizontal: 20, justifyContent: 'center' },
+  logBtnText: { fontSize: 14, fontWeight: '700', color: '#0a0a0f' },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  statBox: { flex: 1, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 12, padding: 12, alignItems: 'center' },
+  statVal: { fontSize: 18, fontWeight: '800', color: '#e8e8f0', marginBottom: 2 },
+  statLabel: { fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 },
+  goalRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 12, padding: 14, marginBottom: 12 },
+  goalInput: { backgroundColor: '#1c1c2a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 8, padding: 8, fontSize: 14, color: '#e8e8f0', width: 70, textAlign: 'center' },
+  chartCard: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 16, padding: 16, marginBottom: 12 },
+  chartTitle: { fontSize: 10, fontWeight: '700', color: '#888899', letterSpacing: 1, marginBottom: 12 },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', height: 120, gap: 2, position: 'relative' },
+  bar: { flex: 1, borderRadius: 3 },
+  goalLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: 'rgba(201,168,76,0.4)', borderStyle: 'dashed' },
+  entryRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 12, padding: 14, marginBottom: 8 },
+  entryDate: { flex: 1, fontSize: 13, color: '#888899' },
+  entryWeight: { fontSize: 15, fontWeight: '700', color: '#c9a84c', marginRight: 12 },
+});
+
+// ============================================================
+// AI COACH SCREEN
+// ============================================================
+
+function CoachScreen({ onBack, userId, character }: { onBack: () => void; userId: string; character: any }) {
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<any>(null);
+
+  const chosenClass = CLASSES.find(c => c.id === character?.classId);
+
+  const systemPrompt = `You are the AI coach for IronLore, a LitRPG fitness app. The user's warrior class is ${chosenClass?.name || 'Warrior'}. 
+
+Your personality: ${chosenClass?.coach || '"No excuses. Add weight."'}
+
+You are ${chosenClass?.name === 'Warrior' ? 'gruff, direct, and battle-hardened. You speak in short, punchy sentences. No fluff.' :
+    chosenClass?.name === 'Ranger' ? 'calm, technical, and precise. You focus on consistency and data.' :
+    chosenClass?.name === 'Monk' ? 'philosophical and balanced. You speak with wisdom and calm.' :
+    'intense, aggressive, and hype. You motivate with fire and energy.'}
+
+The user's name is ${character?.name || 'Warrior'}. Always stay in character. Keep responses concise — 2-4 sentences max unless asked for detail. Reference their fitness journey, class, and goals. Never break immersion.`;
+
+  useEffect(() => {
+    setMessages([{
+      role: 'assistant',
+      content: chosenClass?.name === 'Warrior' ? `${character?.name}. You're here. Good. The forge waits for no one. What do you need?` :
+        chosenClass?.name === 'Ranger' ? `Welcome back, ${character?.name}. Ready to analyze your progress and plan your next move?` :
+        chosenClass?.name === 'Monk' ? `${character?.name}. The mind is still. The body is ready. How can I guide you today?` :
+        `${character?.name}! YOU'RE HERE! The iron is HOT and we're about to go BEAST MODE. What are we destroying today?!`
+    }]);
+  }, []);
+
+  async function sendMessage() {
+    if (!input.trim() || loading) return;
+    const userMsg = { role: 'user' as const, content: input.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': 'YOUR_ANTHROPIC_KEY_HERE', 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          system: systemPrompt,
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || "The forge is silent. Try again.";
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: "The connection to the Iron Realm was lost. Try again." }]);
+    }
+    setLoading(false);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+        <Text style={s.screenTitle}>COACH</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      {/* Coach header */}
+      <View style={co.coachHeader}>
+        <View style={[co.coachAvatar, { backgroundColor: `${chosenClass?.color}30` }]}>
+          <Text style={{ fontSize: 28 }}>{chosenClass?.icon || '⚔️'}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[co.coachName, { color: chosenClass?.color || '#c9a84c' }]}>
+            {chosenClass?.name || 'Warrior'} Coach
+          </Text>
+          <Text style={co.coachTagline}>{chosenClass?.tagline || 'Forge your body in iron and fire'}</Text>
+        </View>
+        <View style={co.onlineDot} />
+      </View>
+
+      {/* Messages */}
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, gap: 12 }}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.map((msg, i) => (
+          <View key={i} style={[co.bubble, msg.role === 'user' ? co.userBubble : co.assistantBubble]}>
+            {msg.role === 'assistant' && (
+              <Text style={{ fontSize: 16, marginBottom: 4 }}>{chosenClass?.icon || '⚔️'}</Text>
+            )}
+            <Text style={[co.bubbleText, msg.role === 'user' && co.userBubbleText]}>{msg.content}</Text>
+          </View>
+        ))}
+        {loading && (
+          <View style={co.assistantBubble}>
+            <ActivityIndicator color="#c9a84c" size="small" />
+          </View>
+        )}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+
+      {/* Input */}
+      <View style={co.inputRow}>
+        <TextInput
+          style={co.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="Ask your coach..."
+          placeholderTextColor="#444"
+          multiline
+          onSubmitEditing={sendMessage}
+        />
+        <TouchableOpacity
+          style={[co.sendBtn, { backgroundColor: input.trim() ? '#c9a84c' : '#2a2a3a' }]}
+          onPress={sendMessage}
+          disabled={!input.trim() || loading}
+        >
+          <Text style={{ fontSize: 18 }}>↑</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const co = StyleSheet.create({
+  coachHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a2a' },
+  coachAvatar: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  coachName: { fontSize: 15, fontWeight: '700' },
+  coachTagline: { fontSize: 11, color: '#888899', fontStyle: 'italic' },
+  onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4cc97a' },
+  bubble: { maxWidth: '85%', borderRadius: 16, padding: 14 },
+  assistantBubble: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  userBubble: { backgroundColor: '#c9a84c', alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+  bubbleText: { fontSize: 14, color: '#e8e8f0', lineHeight: 20 },
+  userBubbleText: { color: '#0a0a0f', fontWeight: '600' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, paddingBottom: 32, gap: 10, borderTopWidth: 1, borderTopColor: '#1a1a2a' },
+  input: { flex: 1, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 12, fontSize: 14, color: '#e8e8f0', maxHeight: 100 },
+  sendBtn: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+});
+
+// ============================================================
+// PROFILE SCREEN
+// ============================================================
+
+function ProfileScreen({ onBack, userId, character, coins, onSignOut }: {
+  onBack: () => void;
+  userId: string;
+  character: any;
+  coins: number;
+  onSignOut: () => void;
+}) {
+  const [workoutCount, setWorkoutCount] = useState(0);
+  const [totalVolume, setTotalVolume] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const chosenClass = CLASSES.find(c => c.id === character?.classId);
+  const chosenGoal = GOAL_PATHS.find(g => g.id === character?.goalId);
+  const classTitle = chosenClass?.name === 'Monk' ? 'Ascendant' : chosenClass?.name === 'Ranger' ? 'Swift' : chosenClass?.name === 'Berserker' ? 'Unbound' : 'Ironborn';
+
+  useEffect(() => { loadStats(); }, []);
+
+  async function loadStats() {
+    setLoading(true);
+    const { data } = await supabase.from('workouts').select('total_volume').eq('user_id', userId);
+    if (data) {
+      setWorkoutCount(data.length);
+      setTotalVolume(data.reduce((acc, w) => acc + (w.total_volume || 0), 0));
+    }
+    setLoading(false);
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    onSignOut();
+  }
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+        <Text style={s.screenTitle}>PROFILE</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Character card */}
+        <View style={pr.heroCard}>
+          <View style={[pr.avatar, { backgroundColor: `${chosenClass?.color}40`, borderColor: chosenClass?.color || '#c9a84c' }]}>
+            <Text style={{ fontSize: 40 }}>{chosenClass?.icon || '⚔️'}</Text>
+          </View>
+          <Text style={[pr.name, { color: chosenClass?.color || '#c9a84c' }]}>{character?.name || 'Warrior'}</Text>
+          <Text style={pr.title}>the {classTitle}</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <View style={[pr.badge, { backgroundColor: `${chosenClass?.color}20`, borderColor: `${chosenClass?.color}50` }]}>
+              <Text style={[pr.badgeText, { color: chosenClass?.color }]}>{chosenClass?.name?.toUpperCase()} CLASS</Text>
+            </View>
+            {chosenGoal && (
+              <View style={[pr.badge, { backgroundColor: `${chosenGoal.color}20`, borderColor: `${chosenGoal.color}50` }]}>
+                <Text style={[pr.badgeText, { color: chosenGoal.color }]}>{chosenGoal.icon} {chosenGoal.name}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 16 }}>
+          {[
+            { label: 'Workouts', val: loading ? '—' : String(workoutCount), icon: '🏋️' },
+            { label: 'Volume', val: loading ? '—' : `${(totalVolume / 1000).toFixed(1)}k`, icon: '📦' },
+            { label: 'Coins', val: coins.toLocaleString(), icon: '🪙' },
+          ].map(stat => (
+            <View key={stat.label} style={pr.statBox}>
+              <Text style={{ fontSize: 18, marginBottom: 4 }}>{stat.icon}</Text>
+              <Text style={pr.statVal}>{stat.val}</Text>
+              <Text style={pr.statLabel}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Class stats */}
+        {chosenClass && (
+          <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+            <Text style={[s.sectionTitle, { marginBottom: 10 }]}>BASE STATS</Text>
+            <View style={s.statsGrid}>
+              {Object.entries(chosenClass.stats).map(([stat, val]) => {
+                const icons: Record<string, string> = { Strength: '💪', Vitality: '❤️', Endurance: '⚡', Focus: '🧠' };
+                return (
+                  <View key={stat} style={s.statCard}>
+                    <Text style={{ fontSize: 14, marginBottom: 2 }}>{icons[stat]}</Text>
+                    <Text style={s.statVal}>{val * 10}</Text>
+                    <Text style={s.statName}>{stat}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Settings */}
+        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+          <Text style={[s.sectionTitle, { marginBottom: 10 }]}>SETTINGS</Text>
+          <TouchableOpacity style={pr.settingRow} onPress={handleSignOut}>
+            <Text style={{ fontSize: 18 }}>🚪</Text>
+            <Text style={pr.settingText}>Sign Out</Text>
+            <Text style={{ fontSize: 16, color: '#444' }}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const pr = StyleSheet.create({
+  heroCard: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a2a', marginBottom: 16 },
+  avatar: { width: 90, height: 90, borderRadius: 24, borderWidth: 3, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  name: { fontSize: 28, fontWeight: '900', marginBottom: 4 },
+  title: { fontSize: 14, color: '#888899', fontStyle: 'italic' },
+  badge: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  statBox: { flex: 1, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 14, alignItems: 'center' },
+  statVal: { fontSize: 18, fontWeight: '800', color: '#e8e8f0', marginBottom: 2 },
+  statLabel: { fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5 },
+  settingRow: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  settingText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#e8e8f0' },
+});
+
+// ============================================================
+// ONBOARDING DATA
+// ============================================================
+
+const CLASSES = [
+  {
+    id: 'warrior',
+    icon: '⚔️',
+    name: 'Warrior',
+    tagline: 'Forge your body in iron and fire',
+    desc: 'Built for the barbell. Strength and muscle are your obsession.',
+    coach: '"No excuses. Add weight."',
+    color: '#c94c4c',
+    stats: { Strength: 5, Vitality: 4, Endurance: 2, Focus: 2 },
+    best: 'Powerlifters · Bodybuilders · Strength athletes',
+  },
+  {
+    id: 'ranger',
+    icon: '🏹',
+    name: 'Ranger',
+    tagline: 'Swift, lean, and relentless',
+    desc: 'Cardio is your weapon. Endurance and fat loss define your path.',
+    coach: '"Consistency over intensity."',
+    color: '#4cc97a',
+    stats: { Strength: 2, Vitality: 4, Endurance: 5, Focus: 3 },
+    best: 'Runners · Cyclists · Fat loss focus',
+  },
+  {
+    id: 'monk',
+    icon: '🧘',
+    name: 'Monk',
+    tagline: 'The body follows the mind',
+    desc: 'Balance, mindfulness, and wellness. All stats grow in harmony.',
+    coach: '"The body follows the mind."',
+    color: '#7ab0e8',
+    stats: { Strength: 3, Vitality: 3, Endurance: 3, Focus: 5 },
+    best: 'Yoga · Meditation · Wellness focus',
+  },
+  {
+    id: 'berserker',
+    icon: '🔥',
+    name: 'Berserker',
+    tagline: 'You were born for this',
+    desc: 'Maximum intensity. All stats grow faster — but consistency is everything.',
+    coach: '"YOU WERE BORN FOR THIS."',
+    color: '#f97316',
+    stats: { Strength: 4, Vitality: 3, Endurance: 4, Focus: 3 },
+    best: 'HIIT · CrossFit · Sport athletes',
+  },
+];
+
+const GOAL_PATHS = [
+  { id: 'ironborn', icon: '🏋️', name: 'Ironborn', desc: 'Build maximum strength and muscle mass', color: '#c94c4c' },
+  { id: 'blade', icon: '🗡️', name: 'Blade', desc: 'Cut body fat and get lean and defined', color: '#c9a84c' },
+  { id: 'monk', icon: '☯️', name: 'Monk Path', desc: 'Balanced wellness, mind and body together', color: '#7ab0e8' },
+  { id: 'warrior', icon: '⚡', name: 'Warrior', desc: 'Athletic performance and sport-specific training', color: '#4cc97a' },
+  { id: 'builder', icon: '🔄', name: 'Builder', desc: 'Body recomposition — gain muscle, lose fat simultaneously', color: '#a855f7' },
+];
+
+// ============================================================
+// ONBOARDING SCREEN
+// ============================================================
+
+type CharacterData = {
+  name: string;
+  classId: string;
+  goalId: string;
+};
+
+function OnboardingScreen({ onComplete }: { onComplete: (data: CharacterData) => void }) {
+  const [step, setStep] = useState(0);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [selectedGoal, setSelectedGoal] = useState<string>('');
+  const [name, setName] = useState('');
+  const [revealed, setRevealed] = useState(false);
+
+  const chosenClass = CLASSES.find(c => c.id === selectedClass);
+  const chosenGoal = GOAL_PATHS.find(g => g.id === selectedGoal);
+
+  function nextStep() { setStep(s => s + 1); }
+
+  function handleReveal() {
+    setRevealed(true);
+    setTimeout(() => {
+      onComplete({ name: name.trim() || 'Warrior', classId: selectedClass, goalId: selectedGoal });
+    }, 1800);
+  }
+
+  if (step === 0) {
+    return (
+      <View style={ob.root}>
+        <StatusBar style="light" />
+        <View style={ob.welcomeContainer}>
+          <View style={ob.emblemWrap}>
+            <Text style={ob.emblemTop}>⚔</Text>
+            <View style={ob.emblemDivider} />
+            <Text style={ob.emblemBottom}>⚔</Text>
+          </View>
+          <Text style={ob.welcomeTitle}>IRONLORE</Text>
+          <Text style={ob.welcomeSub}>Your fitness journey becomes legend.</Text>
+          <Text style={ob.welcomeBody}>
+            Build your warrior. Track every rep, every meal, every milestone.
+            Level up in the real world.
+          </Text>
+          <View style={ob.runeRow}>
+            {['⚔️', '🛡️', '🔥', '💀', '👑'].map((r, i) => (
+              <Text key={i} style={[ob.rune, { opacity: 0.15 + i * 0.15 }]}>{r}</Text>
+            ))}
+          </View>
+          <TouchableOpacity style={ob.primaryBtn} onPress={nextStep}>
+            <Text style={ob.primaryBtnText}>BEGIN YOUR JOURNEY</Text>
+          </TouchableOpacity>
+          <Text style={ob.welcomeFooter}>Free forever · No credit card required</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (step === 1) {
+    return (
+      <View style={ob.root}>
+        <StatusBar style="light" />
+        <View style={ob.stepHeader}>
+          <Text style={ob.stepNum}>STEP 1 OF 3</Text>
+          <Text style={ob.stepTitle}>Choose Your Class</Text>
+          <Text style={ob.stepDesc}>Your class shapes your stats growth and your AI coach's personality.</Text>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 120 }}>
+          {CLASSES.map(cls => {
+            const active = selectedClass === cls.id;
+            return (
+              <TouchableOpacity
+                key={cls.id}
+                style={[ob.classCard, active && { borderColor: cls.color, backgroundColor: `${cls.color}10` }]}
+                onPress={() => setSelectedClass(cls.id)}
+              >
+                <View style={[ob.classIconWrap, { backgroundColor: `${cls.color}18` }]}>
+                  <Text style={ob.classIcon}>{cls.icon}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <Text style={[ob.className, active && { color: cls.color }]}>{cls.name}</Text>
+                    {active && <View style={[ob.selectedTag, { backgroundColor: cls.color }]}><Text style={ob.selectedTagText}>Selected</Text></View>}
+                  </View>
+                  <Text style={ob.classTagline}>{cls.tagline}</Text>
+                  <Text style={ob.classDesc}>{cls.desc}</Text>
+                  <Text style={ob.classCoach}>{cls.coach}</Text>
+                  <View style={{ marginTop: 10, gap: 4 }}>
+                    {Object.entries(cls.stats).map(([stat, val]) => (
+                      <View key={stat} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={ob.statLabel}>{stat}</Text>
+                        <View style={ob.statBarBg}>
+                          <View style={[ob.statBarFill, { width: `${(val / 5) * 100}%` as any, backgroundColor: active ? cls.color : '#444' }]} />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={ob.classBest}>Best for: {cls.best}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        <View style={ob.footer}>
+          <TouchableOpacity
+            style={[ob.primaryBtn, !selectedClass && ob.primaryBtnDisabled]}
+            onPress={() => selectedClass && nextStep()}
+          >
+            <Text style={ob.primaryBtnText}>CONTINUE →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (step === 2) {
+    return (
+      <View style={ob.root}>
+        <StatusBar style="light" />
+        <View style={ob.stepHeader}>
+          <Text style={ob.stepNum}>STEP 2 OF 3</Text>
+          <Text style={ob.stepTitle}>Name Your Warrior</Text>
+          <Text style={ob.stepDesc}>This is how you'll be known in the Iron Realm.</Text>
+        </View>
+        <View style={{ padding: 24 }}>
+          <View style={[ob.classIconWrap, { alignSelf: 'center', width: 72, height: 72, borderRadius: 20, marginBottom: 24, backgroundColor: `${chosenClass?.color}20` }]}>
+            <Text style={{ fontSize: 36 }}>{chosenClass?.icon}</Text>
+          </View>
+          <TextInput
+            style={ob.nameInput}
+            value={name}
+            onChangeText={setName}
+            placeholder="Enter your name..."
+            placeholderTextColor="#444"
+            maxLength={20}
+            autoFocus
+          />
+          <Text style={ob.namePreview}>
+            {name.trim() ? `${name.trim()} the ${chosenClass?.name === 'Monk' ? 'Ascendant' : chosenClass?.name === 'Ranger' ? 'Swift' : chosenClass?.name === 'Berserker' ? 'Unbound' : 'Ironborn'}` : 'Your name · the Ironborn'}
+          </Text>
+          <View style={{ marginTop: 24, gap: 10 }}>
+            <Text style={ob.suggestLabel}>SUGGESTED NAMES</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {['Garrett', 'Kael', 'Theron', 'Dax', 'Riven', 'Sora', 'Mara', 'Lyric'].map(n => (
+                <TouchableOpacity key={n} style={ob.suggestPill} onPress={() => setName(n)}>
+                  <Text style={ob.suggestPillText}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+        <View style={ob.footer}>
+          <TouchableOpacity style={ob.primaryBtn} onPress={nextStep}>
+            <Text style={ob.primaryBtnText}>CONTINUE →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (step === 3) {
+    return (
+      <View style={ob.root}>
+        <StatusBar style="light" />
+        <View style={ob.stepHeader}>
+          <Text style={ob.stepNum}>STEP 3 OF 3</Text>
+          <Text style={ob.stepTitle}>Choose Your Path</Text>
+          <Text style={ob.stepDesc}>Your goal path focuses your daily quests and AI coach recommendations.</Text>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 120 }}>
+          {GOAL_PATHS.map(goal => {
+            const active = selectedGoal === goal.id;
+            return (
+              <TouchableOpacity
+                key={goal.id}
+                style={[ob.goalCard, active && { borderColor: goal.color, backgroundColor: `${goal.color}0d` }]}
+                onPress={() => setSelectedGoal(goal.id)}
+              >
+                <Text style={ob.goalIcon}>{goal.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[ob.goalName, active && { color: goal.color }]}>{goal.name}</Text>
+                  <Text style={ob.goalDesc}>{goal.desc}</Text>
+                </View>
+                <View style={[ob.radioOuter, active && { borderColor: goal.color }]}>
+                  {active && <View style={[ob.radioInner, { backgroundColor: goal.color }]} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        <View style={ob.footer}>
+          <TouchableOpacity
+            style={[ob.primaryBtn, !selectedGoal && ob.primaryBtnDisabled]}
+            onPress={() => selectedGoal && nextStep()}
+          >
+            <Text style={ob.primaryBtnText}>FORGE MY CHARACTER →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={ob.root}>
+      <StatusBar style="light" />
+      <View style={ob.revealContainer}>
+        <Text style={ob.revealEyebrow}>YOUR WARRIOR AWAITS</Text>
+        <View style={[ob.revealAvatar, { borderColor: chosenClass?.color || '#c9a84c', shadowColor: chosenClass?.color || '#c9a84c' }]}>
+          <Text style={{ fontSize: 52 }}>{chosenClass?.icon}</Text>
+        </View>
+        <Text style={[ob.revealName, { color: chosenClass?.color || '#c9a84c' }]}>
+          {name.trim() || 'Warrior'}
+        </Text>
+        <Text style={ob.revealTitle}>
+          the {chosenClass?.name === 'Monk' ? 'Ascendant' : chosenClass?.name === 'Ranger' ? 'Swift' : chosenClass?.name === 'Berserker' ? 'Unbound' : 'Ironborn'}
+        </Text>
+        <View style={[ob.revealClassBadge, { backgroundColor: `${chosenClass?.color}20`, borderColor: `${chosenClass?.color}50` }]}>
+          <Text style={[ob.revealClassText, { color: chosenClass?.color }]}>{chosenClass?.name?.toUpperCase()} CLASS</Text>
+        </View>
+        <View style={[ob.revealGoalBadge, { backgroundColor: `${chosenGoal?.color}15`, borderColor: `${chosenGoal?.color}40` }]}>
+          <Text style={{ fontSize: 14 }}>{chosenGoal?.icon}</Text>
+          <Text style={[ob.revealGoalText, { color: chosenGoal?.color }]}>{chosenGoal?.name} Path</Text>
+        </View>
+        <View style={ob.revealStats}>
+          {chosenClass && Object.entries(chosenClass.stats).map(([stat, val]) => (
+            <View key={stat} style={ob.revealStatItem}>
+              <Text style={[ob.revealStatVal, { color: chosenClass.color }]}>{val * 10}</Text>
+              <Text style={ob.revealStatName}>{stat}</Text>
+            </View>
+          ))}
+        </View>
+        <Text style={ob.revealCoach}>{chosenClass?.coach}</Text>
+        <TouchableOpacity
+          style={[ob.primaryBtn, { marginTop: 24, opacity: revealed ? 0.5 : 1 }]}
+          onPress={handleReveal}
+          disabled={revealed}
+        >
+          <Text style={ob.primaryBtnText}>{revealed ? 'ENTERING THE FORGE...' : '⚔  ENTER THE FORGE'}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ============================================================
+// ONBOARDING STYLES
+// ============================================================
+
+const ob = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#0a0a0f' },
+  welcomeContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emblemWrap: { alignItems: 'center', marginBottom: 20 },
+  emblemTop: { fontSize: 28, color: 'rgba(201,168,76,0.6)' },
+  emblemDivider: { width: 60, height: 1, backgroundColor: 'rgba(201,168,76,0.3)', marginVertical: 6 },
+  emblemBottom: { fontSize: 28, color: 'rgba(201,168,76,0.6)' },
+  welcomeTitle: { fontSize: 42, fontWeight: '900', color: '#c9a84c', letterSpacing: 8, marginBottom: 8 },
+  welcomeSub: { fontSize: 14, color: '#888899', fontStyle: 'italic', marginBottom: 20, textAlign: 'center' },
+  welcomeBody: { fontSize: 14, color: '#666677', textAlign: 'center', lineHeight: 22, marginBottom: 24 },
+  runeRow: { flexDirection: 'row', gap: 16, marginBottom: 32 },
+  rune: { fontSize: 22 },
+  primaryBtn: { backgroundColor: '#c9a84c', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 32, alignItems: 'center', width: '100%' },
+  primaryBtnDisabled: { backgroundColor: '#2a2a3a' },
+  primaryBtnText: { fontSize: 15, fontWeight: '900', color: '#0a0a0f', letterSpacing: 2 },
+  welcomeFooter: { fontSize: 11, color: '#333344', marginTop: 14 },
+  stepHeader: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a2a' },
+  stepNum: { fontSize: 10, fontWeight: '700', color: '#c9a84c', letterSpacing: 2, marginBottom: 6 },
+  stepTitle: { fontSize: 26, fontWeight: '900', color: '#e8e8f0', marginBottom: 6 },
+  stepDesc: { fontSize: 13, color: '#888899', lineHeight: 18 },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 40, backgroundColor: 'rgba(10,10,15,0.97)', borderTopWidth: 1, borderTopColor: '#1a1a2a' },
+  classCard: { backgroundColor: '#12121a', borderWidth: 1.5, borderColor: '#2a2a3a', borderRadius: 18, padding: 16, flexDirection: 'row', gap: 14 },
+  classIconWrap: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  classIcon: { fontSize: 26 },
+  className: { fontSize: 17, fontWeight: '800', color: '#e8e8f0' },
+  classTagline: { fontSize: 12, color: '#c9a84c', fontStyle: 'italic', marginBottom: 4 },
+  classDesc: { fontSize: 12, color: '#888899', lineHeight: 17 },
+  classCoach: { fontSize: 11, color: '#555566', fontStyle: 'italic', marginTop: 4 },
+  selectedTag: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  selectedTagText: { fontSize: 9, fontWeight: '700', color: '#0a0a0f', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statLabel: { fontSize: 9, color: '#666677', textTransform: 'uppercase', letterSpacing: 0.5, width: 66 },
+  statBarBg: { flex: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' },
+  statBarFill: { height: '100%', borderRadius: 2 },
+  classBest: { fontSize: 10, color: '#444455', marginTop: 8, fontStyle: 'italic' },
+  nameInput: { backgroundColor: '#12121a', borderWidth: 1.5, borderColor: '#2a2a3a', borderRadius: 14, padding: 16, fontSize: 20, fontWeight: '700', color: '#e8e8f0', textAlign: 'center', marginBottom: 10 },
+  namePreview: { fontSize: 14, color: '#c9a84c', textAlign: 'center', fontStyle: 'italic' },
+  suggestLabel: { fontSize: 10, fontWeight: '600', color: '#444455', letterSpacing: 1 },
+  suggestPill: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  suggestPillText: { fontSize: 13, color: '#888899' },
+  goalCard: { backgroundColor: '#12121a', borderWidth: 1.5, borderColor: '#2a2a3a', borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  goalIcon: { fontSize: 28 },
+  goalName: { fontSize: 15, fontWeight: '700', color: '#e8e8f0', marginBottom: 3 },
+  goalDesc: { fontSize: 12, color: '#888899' },
+  radioOuter: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#2a2a3a', alignItems: 'center', justifyContent: 'center' },
+  radioInner: { width: 10, height: 10, borderRadius: 5 },
+  revealContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+  revealEyebrow: { fontSize: 10, fontWeight: '700', color: '#c9a84c', letterSpacing: 3, marginBottom: 20 },
+  revealAvatar: { width: 110, height: 110, borderRadius: 28, borderWidth: 3, backgroundColor: '#1a0e0e', alignItems: 'center', justifyContent: 'center', marginBottom: 18, shadowOpacity: 0.6, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 12 },
+  revealName: { fontSize: 34, fontWeight: '900', marginBottom: 4 },
+  revealTitle: { fontSize: 14, color: '#888899', fontStyle: 'italic', marginBottom: 14 },
+  revealClassBadge: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 10 },
+  revealClassText: { fontSize: 11, fontWeight: '700', letterSpacing: 2 },
+  revealGoalBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 20 },
+  revealGoalText: { fontSize: 12, fontWeight: '600' },
+  revealStats: { flexDirection: 'row', gap: 16, marginBottom: 16 },
+  revealStatItem: { alignItems: 'center' },
+  revealStatVal: { fontSize: 22, fontWeight: '900' },
+  revealStatName: { fontSize: 9, color: '#888899', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
+  revealCoach: { fontSize: 12, color: '#555566', fontStyle: 'italic', textAlign: 'center' },
+});
+
+// ============================================================
 // HOME SCREEN
 // ============================================================
 
 export default function HomeScreen() {
-  const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop'>('home');
+  const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop' | 'supplements' | 'bodyweight' | 'coach' | 'profile'>('home');
   const [coins, setCoins] = useState(1250);
+  const [hasCharacter, setHasCharacter] = useState(false);
+  const [character, setCharacter] = useState<CharacterData | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUserId(session.user.id);
+        loadProfile(session.user.id);
+      }
+      setAuthChecked(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUserId(session.user.id);
+        loadProfile(session.user.id);
+      } else {
+        setUserId(null);
+        setHasCharacter(false);
+        setCharacter(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function loadProfile(uid: string) {
+    const { data } = await supabase.from('profiles').select('*').eq('id', uid).single();
+    if (data?.name && data?.class_id) {
+      setCharacter({ name: data.name, classId: data.class_id, goalId: data.goal_id || '' });
+      setCoins(data.coins || 1250);
+      setHasCharacter(true);
+    }
+  }
+
+  async function handleOnboardingComplete(data: CharacterData) {
+    setCharacter(data);
+    setHasCharacter(true);
+    if (userId) {
+      await supabase.from('profiles').update({
+        name: data.name,
+        class_id: data.classId,
+        goal_id: data.goalId,
+      }).eq('id', userId);
+    }
+  }
 
   function earnCoins(amount: number) { setCoins(c => c + amount); }
   function spendCoins(amount: number) { setCoins(c => c - amount); }
+
+  if (!authChecked) {
+    return <View style={{ flex: 1, backgroundColor: '#0a0a0f', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#c9a84c" size="large" /></View>;
+  }
+
+  if (!userId) return <AuthScreen onAuth={() => {}} />;
+  if (!hasCharacter) return <OnboardingScreen onComplete={handleOnboardingComplete} />;
+
+  const chosenClass = CLASSES.find(c => c.id === character?.classId);
+  const classTitle = chosenClass?.name === 'Monk' ? 'Ascendant' : chosenClass?.name === 'Ranger' ? 'Swift' : chosenClass?.name === 'Berserker' ? 'Unbound' : 'Ironborn';
+  const charDisplayName = character ? `${character.name} the ${classTitle}` : 'Warrior';
+  const charClassLabel = chosenClass ? `${chosenClass.icon} ${chosenClass.name.toUpperCase()} CLASS` : '⚔ WARRIOR CLASS';
 
   if (screen === 'train') return <TrainScreen onBack={() => setScreen('home')} />;
   if (screen === 'nutrition') return <NutritionScreen onBack={() => setScreen('home')} />;
   if (screen === 'achievements') return <AchievementsScreen onBack={() => setScreen('home')} coins={coins} onEarn={earnCoins} />;
   if (screen === 'shop') return <ShopScreen onBack={() => setScreen('home')} coins={coins} onSpend={spendCoins} />;
+  if (screen === 'supplements') return <SupplementScreen onBack={() => setScreen('home')} />;
+  if (screen === 'bodyweight') return <BodyWeightScreen onBack={() => setScreen('home')} userId={userId} />;
+  if (screen === 'coach') return <CoachScreen onBack={() => setScreen('home')} userId={userId} character={character} />;
+  if (screen === 'profile') return <ProfileScreen onBack={() => setScreen('home')} userId={userId} character={character} coins={coins} onSignOut={() => setScreen('home')} />;
 
   return (
     <View style={s.root}>
@@ -757,31 +2111,48 @@ export default function HomeScreen() {
               <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
             </TouchableOpacity>
             <View style={s.streakBadge}><Text style={s.streakText}>🔥 47</Text></View>
-            <View style={s.avatarCircle}><Text style={{ fontSize: 16 }}>⚔️</Text></View>
+            <TouchableOpacity onPress={() => setScreen('profile')}>
+              <View style={[s.avatarCircle, { borderColor: chosenClass?.color || '#c9a84c', backgroundColor: chosenClass ? `${chosenClass.color}30` : '#8b2020' }]}>
+                <Text style={{ fontSize: 16 }}>{chosenClass?.icon || '⚔️'}</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={s.characterCard}>
           <View style={{ flexDirection: 'row', gap: 14, marginBottom: 14 }}>
-            <View style={s.charAvatar}><Text style={{ fontSize: 28 }}>⚔️</Text></View>
+            <TouchableOpacity onPress={() => setScreen('profile')}>
+              <View style={[s.charAvatar, { backgroundColor: chosenClass ? `${chosenClass.color}40` : '#c94c4c' }]}>
+                <Text style={{ fontSize: 28 }}>{chosenClass?.icon || '⚔️'}</Text>
+              </View>
+            </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <Text style={s.charName}>Dylan the Ironborn</Text>
-              <Text style={s.charClass}>⚔ WARRIOR CLASS</Text>
+              <Text style={s.charName}>{charDisplayName}</Text>
+              <Text style={[s.charClass, { color: chosenClass?.color || '#c94c4c' }]}>{charClassLabel}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={s.levelBadge}><Text style={s.levelText}>LVL 34</Text></View>
+                <View style={s.levelBadge}><Text style={s.levelText}>LVL 1</Text></View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 10, color: '#888899', marginBottom: 3 }}>6,840 / 10,000 XP</Text>
-                  <View style={s.xpBar}><View style={[s.xpFill, { width: '68%' }]} /></View>
+                  <Text style={{ fontSize: 10, color: '#888899', marginBottom: 3 }}>0 / 1,000 XP</Text>
+                  <View style={s.xpBar}><View style={[s.xpFill, { width: '0%' }]} /></View>
                 </View>
               </View>
             </View>
           </View>
           <View style={s.statsGrid}>
-            {[
-              { icon: '💪', val: '87', name: 'Strength' },
-              { icon: '❤️', val: '74', name: 'Vitality' },
-              { icon: '⚡', val: '61', name: 'Endurance' },
-              { icon: '🧠', val: '79', name: 'Focus' },
+            {chosenClass ? Object.entries(chosenClass.stats).map(([stat, val]) => {
+              const icons: Record<string, string> = { Strength: '💪', Vitality: '❤️', Endurance: '⚡', Focus: '🧠' };
+              return (
+                <View key={stat} style={s.statCard}>
+                  <Text style={{ fontSize: 14, marginBottom: 2 }}>{icons[stat] || '⚡'}</Text>
+                  <Text style={s.statVal}>{val * 10}</Text>
+                  <Text style={s.statName}>{stat}</Text>
+                </View>
+              );
+            }) : [
+              { icon: '💪', val: '50', name: 'Strength' },
+              { icon: '❤️', val: '50', name: 'Vitality' },
+              { icon: '⚡', val: '50', name: 'Endurance' },
+              { icon: '🧠', val: '50', name: 'Focus' },
             ].map((stat) => (
               <View key={stat.name} style={s.statCard}>
                 <Text style={{ fontSize: 14, marginBottom: 2 }}>{stat.icon}</Text>
@@ -792,21 +2163,24 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Quick action buttons */}
         <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 12, marginBottom: 4 }}>
           <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('achievements')}>
             <Text style={{ fontSize: 20 }}>🏆</Text>
             <Text style={s.quickActionText}>Achievements</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('shop')}>
-            <Text style={{ fontSize: 20 }}>🛒</Text>
-            <Text style={s.quickActionText}>Shop</Text>
+          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('bodyweight')}>
+            <Text style={{ fontSize: 20 }}>⚖️</Text>
+            <Text style={s.quickActionText}>Body Weight</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('coach')}>
+            <Text style={{ fontSize: 20 }}>🤖</Text>
+            <Text style={s.quickActionText}>Coach</Text>
           </TouchableOpacity>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginVertical: 12, gap: 8 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(201,168,76,0.15)' }} />
-          <Text style={{ fontSize: 10, color: 'rgba(201,168,76,0.4)', fontStyle: 'italic' }}>Monday, April 27 — The Iron Road</Text>
+          <Text style={{ fontSize: 10, color: 'rgba(201,168,76,0.4)', fontStyle: 'italic' }}>The Iron Road Begins</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(201,168,76,0.15)' }} />
         </View>
 
@@ -816,10 +2190,10 @@ export default function HomeScreen() {
             <Text style={{ fontSize: 11, color: '#c9a84c' }}>View All →</Text>
           </View>
           {[
-            { icon: '🏋️', name: 'Complete Chest Day', sub: '5 exercises · 18 sets · Done', fill: 1.0, color: '#c94c4c', done: true },
-            { icon: '🥩', name: 'Hit Protein Goal', sub: '146g / 200g consumed', fill: 0.73, color: '#4cc97a', done: false, xp: '+350 XP' },
-            { icon: '💊', name: 'Morning Stack Taken', sub: 'Zinc · Vitamin D · Omega-3', fill: 1.0, color: '#4c7bc9', done: true },
-            { icon: '🏃', name: '10,000 Steps', sub: '4,021 / 10,000 steps', fill: 0.40, color: '#c9a84c', done: false, xp: '+150 XP' },
+            { icon: '🏋️', name: 'Complete a Workout', sub: 'Start any training session', fill: 0.0, color: '#c94c4c', done: false, xp: '+500 XP' },
+            { icon: '🥩', name: 'Hit Protein Goal', sub: '0g / 200g consumed', fill: 0.0, color: '#4cc97a', done: false, xp: '+350 XP' },
+            { icon: '💊', name: 'Take Morning Stack', sub: 'Log your morning supplements', fill: 0.0, color: '#4c7bc9', done: false, xp: '+100 XP' },
+            { icon: '🏃', name: '10,000 Steps', sub: '0 / 10,000 steps', fill: 0.0, color: '#c9a84c', done: false, xp: '+150 XP' },
           ].map((quest) => (
             <View key={quest.name} style={[s.questCard, quest.done && s.questDone]}>
               <Text style={{ fontSize: 22 }}>{quest.icon}</Text>
@@ -838,12 +2212,15 @@ export default function HomeScreen() {
         </View>
 
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { marginBottom: 10 }]}>TODAY'S STACK</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <Text style={s.sectionTitle}>TODAY'S STACK</Text>
+            <TouchableOpacity onPress={() => setScreen('supplements')}><Text style={{ fontSize: 11, color: '#c9a84c' }}>Manage →</Text></TouchableOpacity>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['Zinc ✓', 'Vitamin D ✓', 'Omega-3 ✓', 'Creatine ✓', 'CJC-1295 🌙', 'Ipamorelin 🌙'].map((supp) => (
-              <View key={supp} style={[s.pill, supp.includes('✓') && s.pillTaken]}>
-                <Text style={[s.pillText, supp.includes('✓') && s.pillTextTaken]}>{supp}</Text>
-              </View>
+            {['Zinc', 'Vitamin D3', 'Omega-3', 'Creatine', 'Magnesium 🌙', 'CJC-1295 🌙'].map((supp) => (
+              <TouchableOpacity key={supp} style={s.pill} onPress={() => setScreen('supplements')}>
+                <Text style={s.pillText}>{supp}</Text>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
@@ -851,14 +2228,14 @@ export default function HomeScreen() {
         <View style={s.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <Text style={s.sectionTitle}>NUTRITION</Text>
-            <Text style={{ fontSize: 12, color: '#c9a84c' }}>⚡ 2,340 / 1,800 kcal</Text>
+            <Text style={{ fontSize: 12, color: '#c9a84c' }}>0 / 1,800 kcal</Text>
           </View>
           <View style={s.macroCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 }}>
               {[
-                { name: 'Protein', val: '146g', goal: '200g', pct: 0.73, color: '#c94c4c' },
-                { name: 'Carbs', val: '165g', goal: '150g', pct: 0.55, color: '#c9a84c' },
-                { name: 'Fat', val: '52g', goal: '60g', pct: 0.65, color: '#4cc97a' },
+                { name: 'Protein', val: '0g', goal: '200g', pct: 0, color: '#c94c4c' },
+                { name: 'Carbs', val: '0g', goal: '150g', pct: 0, color: '#c9a84c' },
+                { name: 'Fat', val: '0g', goal: '60g', pct: 0, color: '#4cc97a' },
               ].map((macro) => (
                 <View key={macro.name} style={{ alignItems: 'center' }}>
                   <View style={{ width: 40, height: 60, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden', justifyContent: 'flex-end', marginBottom: 4 }}>
@@ -883,9 +2260,9 @@ export default function HomeScreen() {
         {[
           { icon: '🏠', label: 'Home', key: 'home' },
           { icon: '⚔️', label: 'Train', key: 'train' },
+          { icon: '🤖', label: 'Coach', key: 'coach' },
           { icon: '🥩', label: 'Nutrition', key: 'nutrition' },
-          { icon: '🏆', label: 'Achieve', key: 'achievements' },
-          { icon: '🛒', label: 'Shop', key: 'shop' },
+          { icon: '👤', label: 'Profile', key: 'profile' },
         ].map((tab) => (
           <TouchableOpacity key={tab.label} style={s.navItem} onPress={() => setScreen(tab.key as any)}>
             <Text style={{ fontSize: 20 }}>{tab.icon}</Text>
@@ -949,13 +2326,11 @@ const s = StyleSheet.create({
   navItem: { flex: 1, alignItems: 'center', gap: 3 },
   navLabel: { fontSize: 9, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, color: '#888899' },
   navLabelActive: { color: '#c9a84c' },
-  // Tabs
   tabRow: { paddingHorizontal: 16, marginBottom: 12 },
   tab: { paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 20 },
   tabActive: { borderColor: 'rgba(201,168,76,0.4)', backgroundColor: 'rgba(201,168,76,0.08)' },
   tabText: { fontSize: 13, fontWeight: '600', color: '#888899' },
   tabTextActive: { color: '#c9a84c' },
-  // Achievements
   achievementProgress2: { paddingHorizontal: 16, marginBottom: 8 },
   achievementCard: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: 0.6 },
   achievementUnlocked: { opacity: 1, borderColor: 'rgba(201,168,76,0.2)' },
@@ -975,7 +2350,6 @@ const s = StyleSheet.create({
   coinRewardText: { fontSize: 11, fontWeight: '700', color: '#c9a84c' },
   unlockedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#4cc97a', alignItems: 'center', justifyContent: 'center' },
   unlockedBadgeText: { fontSize: 12, color: '#052e16', fontWeight: '700' },
-  // Shop
   shopCard: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   shopCardEquipped: { borderColor: 'rgba(201,168,76,0.3)', backgroundColor: '#1a1508' },
   shopIconWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: '#1c1c2a', alignItems: 'center', justifyContent: 'center', position: 'relative' },
@@ -996,7 +2370,6 @@ const s = StyleSheet.create({
   equippedBtnText: { fontSize: 16, color: '#c9a84c' },
   equippedTag: { backgroundColor: 'rgba(201,168,76,0.15)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   equippedTagText: { fontSize: 9, fontWeight: '700', color: '#c9a84c', textTransform: 'uppercase', letterSpacing: 0.5 },
-  // Nutrition
   summaryCard: { marginHorizontal: 16, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 20, padding: 18, marginBottom: 12 },
   mealTab: { paddingHorizontal: 16, paddingVertical: 10, marginRight: 8, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 12, alignItems: 'center' },
   mealTabActive: { borderColor: 'rgba(201,168,76,0.4)', backgroundColor: 'rgba(201,168,76,0.08)' },
@@ -1009,7 +2382,6 @@ const s = StyleSheet.create({
   searchInput: { flex: 1, padding: 12, fontSize: 15, color: '#e8e8f0' },
   quickAddLabel: { fontSize: 10, fontWeight: '600', color: '#444', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 16, paddingVertical: 8 },
   foodResult: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a2a' },
-  // Train
   quickStartBtn: { backgroundColor: '#1a1a26', borderWidth: 1, borderColor: 'rgba(201,168,76,0.3)', borderRadius: 16, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 24 },
   quickStartTitle: { fontSize: 16, fontWeight: '700', color: '#e8e8f0', marginBottom: 2 },
   routineLabel: { fontSize: 11, fontWeight: '600', color: '#888899', letterSpacing: 1, marginBottom: 10 },
