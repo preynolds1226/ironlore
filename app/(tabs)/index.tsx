@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  TextInput, Modal, Vibration, ActivityIndicator, Keyboard, Image, Alert
+  TextInput, Modal, Vibration, ActivityIndicator, Keyboard, Image, Alert, Switch
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { createClient } from '@supabase/supabase-js';
@@ -294,10 +294,12 @@ const auth = StyleSheet.create({
 // SETTINGS SCREEN
 // ============================================================
 
-function SettingsScreen({ onBack, userId, character, onUpdate }: {
+function SettingsScreen({ onBack, userId, character, cleanMode, onCleanModeToggle, onUpdate }: {
   onBack: () => void;
   userId: string;
   character: any;
+  cleanMode: boolean;
+  onCleanModeToggle: (val: boolean) => void;
   onUpdate: (data: { name: string; goalId: string; calorieGoal: number; proteinGoal: number }) => void;
 }) {
   const [name, setName] = useState(character?.name || '');
@@ -328,6 +330,21 @@ function SettingsScreen({ onBack, userId, character, onUpdate }: {
         <View style={{ width: 60 }} />
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
+
+        {/* Clean Mode */}
+        <Text style={[s.sectionTitle, { marginBottom: 10 }]}>DISPLAY</Text>
+        <View style={{ backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#e8e8f0', marginBottom: 3 }}>Clean Mode</Text>
+            <Text style={{ fontSize: 12, color: '#888899', lineHeight: 17 }}>Hide all RPG elements. Shows a pure fitness tracker with no XP, classes, coins, or lore.</Text>
+          </View>
+          <Switch
+            value={cleanMode}
+            onValueChange={onCleanModeToggle}
+            trackColor={{ false: '#2a2a3a', true: '#c9a84c' }}
+            thumbColor={cleanMode ? '#0a0a0f' : '#888899'}
+          />
+        </View>
 
         {/* Character */}
         <Text style={[s.sectionTitle, { marginBottom: 10 }]}>CHARACTER</Text>
@@ -2503,6 +2520,7 @@ const ob = StyleSheet.create({
 
 export default function HomeScreen() {
   const [screen, setScreen] = useState<'home' | 'train' | 'nutrition' | 'achievements' | 'shop' | 'supplements' | 'bodyweight' | 'coach' | 'profile' | 'history' | 'settings'>('home');
+  const [cleanMode, setCleanMode] = useState(false);
   const [streak, setStreak] = useState(0);
   const [workoutDoneToday, setWorkoutDoneToday] = useState(false);
   const [morningSuppsCount, setMorningSuppsCount] = useState(0);
@@ -2536,7 +2554,16 @@ export default function HomeScreen() {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function registerForPushNotifications() {
+  useEffect(() => {
+    AsyncStorage.getItem('cleanMode').then(val => {
+      if (val === 'true') setCleanMode(true);
+    });
+  }, []);
+
+  function toggleCleanMode(val: boolean) {
+    setCleanMode(val);
+    AsyncStorage.setItem('cleanMode', val ? 'true' : 'false');
+  }
     if (!Device.isDevice) return;
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
@@ -2637,7 +2664,7 @@ export default function HomeScreen() {
   if (screen === 'coach') return <CoachScreen onBack={() => setScreen('home')} userId={userId} character={character} />;
   if (screen === 'profile') return <ProfileScreen onBack={() => setScreen('home')} userId={userId} character={character} coins={coins} streak={streak} onSignOut={() => setScreen('home')} onSettings={() => setScreen('settings')} />;
   if (screen === 'history') return <WorkoutHistoryScreen onBack={() => setScreen('home')} userId={userId} />;
-  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen('profile')} userId={userId} character={character} onUpdate={({ name, goalId }) => { setCharacter((prev: any) => ({ ...prev, name, goalId })); setScreen('profile'); }} />;
+  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen('profile')} userId={userId} character={character} cleanMode={cleanMode} onCleanModeToggle={toggleCleanMode} onUpdate={({ name, goalId }) => { setCharacter((prev: any) => ({ ...prev, name, goalId })); setScreen('profile'); }} />;
 
   return (
     <View style={s.root}>
@@ -2647,10 +2674,14 @@ export default function HomeScreen() {
         <View style={s.header}>
           <Text style={s.logo}>IRONLORE</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity style={s.coinDisplay} onPress={() => setScreen('shop')}>
-              <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
-            </TouchableOpacity>
-            <View style={s.streakBadge}><Text style={s.streakText}>🔥 {streak}</Text></View>
+            {!cleanMode && (
+              <TouchableOpacity style={s.coinDisplay} onPress={() => setScreen('shop')}>
+                <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
+              </TouchableOpacity>
+            )}
+            {!cleanMode && (
+              <View style={s.streakBadge}><Text style={s.streakText}>🔥 {streak}</Text></View>
+            )}
             <TouchableOpacity onPress={() => setScreen('profile')}>
               <View style={[s.avatarCircle, { borderColor: chosenClass?.color || '#c9a84c', backgroundColor: chosenClass ? `${chosenClass.color}30` : '#8b2020' }]}>
                 <Text style={{ fontSize: 16 }}>{chosenClass?.icon || '⚔️'}</Text>
@@ -2659,6 +2690,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {!cleanMode && (
         <View style={s.characterCard}>
           <View style={{ flexDirection: 'row', gap: 14, marginBottom: 14 }}>
             <TouchableOpacity onPress={() => setScreen('profile')}>
@@ -2702,12 +2734,15 @@ export default function HomeScreen() {
             ))}
           </View>
         </View>
+        )}
 
         <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 12, marginBottom: 4 }}>
-          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('achievements')}>
-            <Text style={{ fontSize: 20 }}>🏆</Text>
-            <Text style={s.quickActionText}>Achievements</Text>
-          </TouchableOpacity>
+          {!cleanMode && (
+            <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('achievements')}>
+              <Text style={{ fontSize: 20 }}>🏆</Text>
+              <Text style={s.quickActionText}>Achievements</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('history')}>
             <Text style={{ fontSize: 20 }}>📋</Text>
             <Text style={s.quickActionText}>History</Text>
@@ -2722,15 +2757,17 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {!cleanMode && (
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginVertical: 12, gap: 8 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(201,168,76,0.15)' }} />
           <Text style={{ fontSize: 10, color: 'rgba(201,168,76,0.4)', fontStyle: 'italic' }}>The Iron Road Begins</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(201,168,76,0.15)' }} />
         </View>
+        )}
 
         <View style={s.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={s.sectionTitle}>DAILY QUESTS</Text>
+            <Text style={s.sectionTitle}>{cleanMode ? 'TODAY\'S GOALS' : 'DAILY QUESTS'}</Text>
             <Text style={{ fontSize: 11, color: '#c9a84c' }}>View All →</Text>
           </View>
           {[
@@ -2782,7 +2819,7 @@ export default function HomeScreen() {
               </View>
               {quest.done
                 ? <View style={s.checkCircle}><Text style={{ fontSize: 12, color: '#052e16', fontWeight: '700' }}>✓</Text></View>
-                : <Text style={s.questXP}>{quest.xp}</Text>}
+                : !cleanMode ? <Text style={s.questXP}>{quest.xp}</Text> : null}
             </View>
           ))}
         </View>
