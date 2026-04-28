@@ -450,6 +450,44 @@ function ShopScreen({ onBack, coins, onSpend }: { onBack: () => void; coins: num
 // NUTRITION SCREEN
 // ============================================================
 
+function ManualFoodEntry({ onAdd }: { onAdd: (food: any) => void }) {
+  const [name, setName] = useState('');
+  const [calories, setCalories] = useState('');
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
+
+  function handleAdd() {
+    if (!name.trim()) return;
+    onAdd({
+      id: `manual_${Date.now()}`,
+      name: name.trim(),
+      calories: parseFloat(calories) || 0,
+      protein: parseFloat(protein) || 0,
+      carbs: parseFloat(carbs) || 0,
+      fat: parseFloat(fat) || 0,
+      serving: '1 serving',
+    });
+  }
+
+  return (
+    <View style={{ gap: 8 }}>
+      <TextInput style={s.modalInput} value={name} onChangeText={setName} placeholder="Food name" placeholderTextColor="#444" />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <TextInput style={[s.modalInput, { flex: 1 }]} value={calories} onChangeText={setCalories} placeholder="Calories" placeholderTextColor="#444" keyboardType="numeric" />
+        <TextInput style={[s.modalInput, { flex: 1 }]} value={protein} onChangeText={setProtein} placeholder="Protein g" placeholderTextColor="#444" keyboardType="numeric" />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <TextInput style={[s.modalInput, { flex: 1 }]} value={carbs} onChangeText={setCarbs} placeholder="Carbs g" placeholderTextColor="#444" keyboardType="numeric" />
+        <TextInput style={[s.modalInput, { flex: 1 }]} value={fat} onChangeText={setFat} placeholder="Fat g" placeholderTextColor="#444" keyboardType="numeric" />
+      </View>
+      <TouchableOpacity style={s.modalSave} onPress={handleAdd}>
+        <Text style={s.modalSaveText}>Add Food</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function NutritionScreen({ onBack }: { onBack: () => void }) {
   const [nutView, setNutView] = useState<'log' | 'search' | 'scan'>('log');
   const [activeMeal, setActiveMeal] = useState('Breakfast');
@@ -500,30 +538,31 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
     setNutView('search');
     setSearching(true);
     try {
-      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${data}.json`);
+      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${data}?fields=product_name,nutriments,serving_size`);
       const json = await res.json();
       if (json.status === 1 && json.product) {
         const p = json.product;
+        // Prefer per-serving data, fall back to per-100g
+        const hasServing = p.nutriments?.['energy-kcal_serving'] > 0;
         const food = {
           id: data,
-          name: p.product_name_en || p.product_name || 'Unknown Product',
-          calories: Math.round(p.nutriments?.['energy-kcal_100g'] || 0),
-          protein: Math.round(p.nutriments?.proteins_100g || 0),
-          carbs: Math.round(p.nutriments?.carbohydrates_100g || 0),
-          fat: Math.round(p.nutriments?.fat_100g || 0),
-          serving: '100g',
+          name: p.product_name || 'Unknown Product',
+          calories: Math.round(hasServing ? p.nutriments?.['energy-kcal_serving'] : (p.nutriments?.['energy-kcal_100g'] * (parseFloat(p.serving_quantity) || 30) / 100)),
+          protein: Math.round(hasServing ? p.nutriments?.proteins_serving : (p.nutriments?.proteins_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
+          carbs: Math.round(hasServing ? p.nutriments?.carbohydrates_serving : (p.nutriments?.carbohydrates_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
+          fat: Math.round(hasServing ? p.nutriments?.fat_serving : (p.nutriments?.fat_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
+          serving: p.serving_size || '1 serving',
         };
         setSearchResults([food]);
       } else {
-        Alert.alert('Not Found', 'Product not found in database.');
         setSearchResults([]);
+        setSearchQuery(data);
+        await searchFood(data);
       }
-    } catch {
-      Alert.alert('Error', 'Could not scan product.');
+    } catch (e) {
       setSearchResults([]);
     }
     setSearching(false);
-    setScanned(false);
   }
 
   async function openScanner() {
@@ -700,7 +739,12 @@ function NutritionScreen({ onBack }: { onBack: () => void }) {
                 ))}
               </View>
             )}
-            {!searching && searchQuery.length > 1 && searchResults.length === 0 && <View style={{ padding: 32, alignItems: 'center' }}><Text style={{ fontSize: 13, color: '#444' }}>No results found</Text></View>}
+            {!searching && searchQuery.length > 1 && searchResults.length === 0 && (
+              <View style={{ padding: 20 }}>
+                <Text style={{ fontSize: 13, color: '#888899', textAlign: 'center', marginBottom: 16 }}>No results found. Add it manually:</Text>
+                <ManualFoodEntry onAdd={addFood} />
+              </View>
+            )}
             <View style={{ height: 40 }} />
           </ScrollView>
         </View>
