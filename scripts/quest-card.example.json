@@ -1,0 +1,20 @@
+{
+  "title": "DAILY QUEST LOG",
+  "playerName": "Dillon",
+  "className": "Warrior",
+  "classIcon": "⚔️",
+  "dateLabel": "APR 29, 2026",
+  "stats": [
+    { "label": "Streak", "value": "7d" },
+    { "label": "Workouts", "value": "3" },
+    { "label": "XP", "value": "+450" },
+    { "label": "Protein", "value": "132g" }
+  ],
+  "quests": [
+    { "name": "Forge the Iron", "detail": "Train today", "pct": 1.0, "reward": "+200 XP" },
+    { "name": "Protein Pact", "detail": "132 / 200g", "pct": 0.66, "reward": "+150 XP" },
+    { "name": "Morning Stack", "detail": "3 / 4 taken", "pct": 0.75, "reward": "+100 XP" }
+  ],
+  "footer": "IronLore • No ads • No tracking"
+}
+

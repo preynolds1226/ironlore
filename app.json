@@ -7,30 +7,41 @@
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/ironlore-splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0a0a0f"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ironlore.app"
+      "bundleIdentifier": "com.ironlore.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "IronLore uses your camera to scan food barcodes for nutrition logging."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
         "backgroundColor": "#0a0a0f"
       },
-      "package": "com.ironlore.app"
+      "package": "com.ironlore.app",
+      "versionCode": 1
     },
     "plugins": [
       "expo-camera",
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png",
+          "icon": "./assets/images/android-icon-monochrome.png",
           "color": "#c9a84c"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "supabaseUrl": "https://blrvttulfyeoqromogfz.supabase.co",
+      "supabaseAnonKey": "",
+      "supabaseFunctionsUrl": "https://blrvttulfyeoqromogfz.supabase.co/functions/v1"
+    }
   }
 }
