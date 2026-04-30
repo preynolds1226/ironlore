@@ -1,19 +1,45 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
 
-import { callCoach, CoachError } from '@/src/ai/coachClient';
+import { callCoachWithProposals, CoachError, type CoachMessage } from '@/src/ai/coachClient';
+import type { CoachProposal } from '@/src/ai/coachProposals';
+import { DEFAULT_NUTRITION_GOALS } from '@/src/constants/defaultNutritionGoals';
+import { appendNutritionItems, loadNutritionDay, totalsFromItems } from '@/src/data/nutritionDayStore';
+import { deleteTemplate, listTemplates, upsertTemplate } from '@/src/data/trainingTemplates';
 import { CLASSES } from '@/src/domain/gameData';
 import { useIsOnline } from '@/src/system/network';
 
 export type CoachCharacter = { name?: string; classId?: string };
 
+type UserChatMessage = { role: 'user'; content: string };
+type AssistantChatMessage = {
+  role: 'assistant';
+  content: string;
+  proposals: CoachProposal[];
+  proposalStatuses: ('pending' | 'applied' | 'dismissed')[];
+};
+type ChatMessage = UserChatMessage | AssistantChatMessage;
+
+function isAssistantMessage(m: ChatMessage): m is AssistantChatMessage {
+  return m.role === 'assistant';
+}
+
+function toCoachMessages(msgs: ChatMessage[]): CoachMessage[] {
+  return msgs.map((m) => ({ role: m.role, content: m.content }));
+}
+
+function todayKey() {
+  return new Date().toISOString().split('T')[0];
+}
+
 export function CoachScreen(props: {
   onBack: () => void;
-  userId: string;
+  userId: string | null;
   character: CoachCharacter | null;
 }) {
-  const { onBack, character } = props;
+  const { onBack, character, userId } = props;
 
   const chosenClass = CLASSES.find((c) => c.id === character?.classId);
   const initialGreeting =
@@ -22,12 +48,16 @@ export function CoachScreen(props: {
       chosenClass?.name === 'Monk' ? `${character?.name}. The mind is still. The body is ready. How can I guide you today?` :
       `${character?.name}! YOU'RE HERE! The iron is HOT and we're about to go BEAST MODE. What are we destroying today?!`;
 
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>(() => [
-    { role: 'assistant', content: initialGreeting },
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    { role: 'assistant', content: initialGreeting, proposals: [], proposalStatuses: [] },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [lastFailed, setLastFailed] = useState<{ input: string; systemPrompt: string; messages: { role: 'user' | 'assistant'; content: string }[] } | null>(null);
+  const [lastFailed, setLastFailed] = useState<{
+    input: string;
+    systemPrompt: string;
+    messages: ChatMessage[];
+  } | null>(null);
 
   const scrollRef = useRef<ScrollView | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -71,12 +101,15 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
     const raw = (override ?? input).trim();
     if (!raw || loading) return;
     if (!isOnline) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'No signal. The realm is dark. Reconnect and try again.' }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'No signal. The realm is dark. Reconnect and try again.', proposals: [], proposalStatuses: [] },
+      ]);
       return;
     }
 
     const content = raw.slice(0, 4000);
-    const userMsg = { role: 'user' as const, content };
+    const userMsg: UserChatMessage = { role: 'user', content };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
@@ -88,21 +121,142 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
       abortRef.current?.abort();
       abortRef.current = new AbortController();
 
-      const reply = await callCoach({
+      let workoutTemplates: { id: string; name: string }[] | undefined;
+      if (userId) {
+        try {
+          const tpl = await listTemplates(userId);
+          workoutTemplates = tpl.map((t) => ({ id: t.id, name: t.name }));
+        } catch {
+          workoutTemplates = [];
+        }
+      }
+      let nutritionToday: { calories: number; protein: number; carbs: number; fat: number } | undefined;
+      try {
+        const items = await loadNutritionDay(todayKey());
+        nutritionToday = totalsFromItems(items);
+      } catch {
+        nutritionToday = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      }
+
+      const { text, proposals } = await callCoachWithProposals({
         systemPrompt,
-        messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+        messages: toCoachMessages(newMessages),
+        context: {
+          userId: userId ?? undefined,
+          workoutTemplates,
+          nutritionToday,
+        },
         signal: abortRef.current.signal,
       });
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: text,
+          proposals,
+          proposalStatuses: proposals.map(() => 'pending'),
+        },
+      ]);
     } catch (err: any) {
       const text = errorToCoachText(err);
       if (text) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: text }]);
+        setMessages((prev) => [...prev, { role: 'assistant', content: text, proposals: [], proposalStatuses: [] }]);
         setLastFailed({ input: content, systemPrompt, messages: newMessages });
       }
     }
     setLoading(false);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }
+
+  async function applyProposal(msgIdx: number, proposalIdx: number) {
+    const msg = messages[msgIdx];
+    if (!isAssistantMessage(msg)) return;
+    const p = msg.proposals[proposalIdx];
+    if (!p || msg.proposalStatuses[proposalIdx] !== 'pending') return;
+
+    try {
+      if (p.type === 'workout_template_upsert') {
+        if (!userId) {
+          Alert.alert('Sign in', 'Log in to save workout templates.');
+          return;
+        }
+        await upsertTemplate({
+          id: p.templateId,
+          userId,
+          name: p.name,
+          notes: p.notes,
+          items: p.items.map((it, idx) => ({
+            position: idx,
+            exerciseName: it.exerciseName,
+            sets: it.sets.map((s) => ({
+              reps: s.reps ?? 8,
+              weight: s.weight,
+              rpe: s.rpe,
+              note: s.note,
+            })),
+          })),
+        });
+        Alert.alert('Saved', 'Workout template updated. Open Training to start it.', [
+          { text: 'OK' },
+          { text: 'Training', onPress: () => router.push('/(tabs)/training') },
+        ]);
+      } else if (p.type === 'workout_template_delete') {
+        if (!userId) {
+          Alert.alert('Sign in', 'Log in to delete templates.');
+          return;
+        }
+        await deleteTemplate(p.templateId);
+        Alert.alert('Deleted', 'Workout template removed.');
+      } else if (p.type === 'food_log_append') {
+        await appendNutritionItems(
+          todayKey(),
+          p.meal || 'Lunch',
+          p.items.map((it) => ({
+            name: it.name,
+            calories: it.calories,
+            protein: it.protein,
+            carbs: it.carbs,
+            fat: it.fat,
+            qty: it.qty,
+            serving: it.serving,
+          })),
+          DEFAULT_NUTRITION_GOALS,
+        );
+        Alert.alert('Logged', 'Food added to today’s log. Check Nutrition.');
+      }
+
+      setMessages((prev) =>
+        prev.map((m, i) => {
+          if (i !== msgIdx || !isAssistantMessage(m)) return m;
+          const next = [...m.proposalStatuses];
+          next[proposalIdx] = 'applied';
+          return { ...m, proposalStatuses: next };
+        }),
+      );
+    } catch (e: any) {
+      Alert.alert('Could not apply', e?.message ?? 'Something went wrong.');
+    }
+  }
+
+  function dismissProposal(msgIdx: number, proposalIdx: number) {
+    setMessages((prev) =>
+      prev.map((m, i) => {
+        if (i !== msgIdx || !isAssistantMessage(m)) return m;
+        const next = [...m.proposalStatuses];
+        next[proposalIdx] = 'dismissed';
+        return { ...m, proposalStatuses: next };
+      }),
+    );
+  }
+
+  function proposalSummary(p: CoachProposal): string {
+    if (p.type === 'workout_template_upsert') {
+      return `Workout: ${p.name} — ${p.items.length} exercise(s)`;
+    }
+    if (p.type === 'workout_template_delete') {
+      return `Delete template ${p.templateId.slice(0, 8)}…`;
+    }
+    return `Food: ${p.items.map((i) => i.name).join(', ')}`;
   }
 
   return (
@@ -141,11 +295,35 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
         {messages.map((msg, i) => (
-          <View key={i} style={[co.bubble, msg.role === 'user' ? co.userBubble : co.assistantBubble]}>
-            {msg.role === 'assistant' && (
-              <Text style={{ fontSize: 16, marginBottom: 4 }}>{chosenClass?.icon || '⚔️'}</Text>
-            )}
-            <Text style={[co.bubbleText, msg.role === 'user' && co.userBubbleText]}>{msg.content}</Text>
+          <View key={i}>
+            <View style={[co.bubble, msg.role === 'user' ? co.userBubble : co.assistantBubble]}>
+              {msg.role === 'assistant' && (
+                <Text style={{ fontSize: 16, marginBottom: 4 }}>{chosenClass?.icon || '⚔️'}</Text>
+              )}
+              <Text style={[co.bubbleText, msg.role === 'user' && co.userBubbleText]}>{msg.content}</Text>
+            </View>
+            {isAssistantMessage(msg) &&
+              msg.proposals.map((p, pi) => {
+                const st = msg.proposalStatuses[pi];
+                if (!st || st === 'dismissed') return null;
+                return (
+                  <View key={`${i}-p-${pi}`} style={co.proposalCard}>
+                    <Text style={co.proposalTitle}>Suggested action</Text>
+                    <Text style={co.proposalBody}>{proposalSummary(p)}</Text>
+                    {st === 'pending' && (
+                      <View style={co.proposalRow}>
+                        <TouchableOpacity style={co.applyBtn} onPress={() => applyProposal(i, pi)}>
+                          <Text style={co.applyBtnText}>Apply</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={co.dismissBtn} onPress={() => dismissProposal(i, pi)}>
+                          <Text style={co.dismissBtnText}>Dismiss</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {st === 'applied' && <Text style={co.appliedLabel}>Applied</Text>}
+                  </View>
+                );
+              })}
           </View>
         ))}
         {loading && (
@@ -215,5 +393,24 @@ const co = StyleSheet.create({
   sendBtn: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   retryBtn: { backgroundColor: 'rgba(201,168,76,0.12)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
   retryBtnText: { fontSize: 12, fontWeight: '800', color: '#c9a84c', letterSpacing: 0.6 },
+  proposalCard: {
+    marginLeft: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    maxWidth: '92%',
+    backgroundColor: '#0f0f14',
+    borderWidth: 1,
+    borderColor: '#c9a84c55',
+    borderRadius: 14,
+    padding: 12,
+  },
+  proposalTitle: { fontSize: 10, fontWeight: '900', color: '#c9a84c', letterSpacing: 1, marginBottom: 6 },
+  proposalBody: { fontSize: 13, color: '#cfcfe6', lineHeight: 18 },
+  proposalRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  applyBtn: { flex: 1, backgroundColor: '#c9a84c', borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  applyBtnText: { fontSize: 13, fontWeight: '900', color: '#0a0a0f' },
+  dismissBtn: { flex: 1, backgroundColor: '#1a1a24', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  dismissBtnText: { fontSize: 13, fontWeight: '800', color: '#888899' },
+  appliedLabel: { marginTop: 10, fontSize: 12, fontWeight: '800', color: '#4cc97a' },
 });
 

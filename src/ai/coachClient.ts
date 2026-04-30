@@ -1,10 +1,17 @@
 import { getRuntimeConfig } from '@/src/config/runtime';
 import { supabase } from '@/src/data/supabaseClient';
 import { getNetworkStateOnce, isOnlineFromState } from '@/src/system/network';
+import {
+  type CoachContextPayload,
+  type CoachProposal,
+  parseCoachProposals,
+} from '@/src/ai/coachProposals';
 
 export type CoachMessage = { role: 'user' | 'assistant'; content: string };
 
 type CoachResponse = {
+  reply?: string;
+  proposals?: unknown;
   content?: { text?: string }[];
 };
 
@@ -42,11 +49,26 @@ function parseRetryAfterSeconds(retryAfter: string | null): number | undefined {
   return undefined;
 }
 
-export async function callCoach(params: {
+export type CoachCallParams = {
   systemPrompt: string;
   messages: CoachMessage[];
+  context?: CoachContextPayload;
   signal?: AbortSignal;
-}): Promise<string> {
+};
+
+function normalizeCoachResponse(data: CoachResponse): { text: string; proposals: CoachProposal[] } {
+  const text =
+    (typeof data.reply === 'string' && data.reply.trim()
+      ? data.reply.trim()
+      : data.content?.[0]?.text?.trim()) || 'The forge is silent. Try again.';
+  const proposals = parseCoachProposals(data.proposals);
+  return { text, proposals };
+}
+
+export async function callCoachWithProposals(params: CoachCallParams): Promise<{
+  text: string;
+  proposals: CoachProposal[];
+}> {
   const { supabaseFunctionsUrl } = getRuntimeConfig();
 
   const net = await getNetworkStateOnce().catch(() => null);
@@ -70,6 +92,7 @@ export async function callCoach(params: {
       body: JSON.stringify({
         systemPrompt: params.systemPrompt,
         messages: params.messages.map((m) => ({ role: m.role, content: m.content })),
+        ...(params.context ? { context: params.context } : {}),
       }),
       signal: params.signal,
     });
@@ -101,6 +124,12 @@ export async function callCoach(params: {
   }
 
   const data = (await res.json()) as CoachResponse;
-  return data.content?.[0]?.text || 'The forge is silent. Try again.';
+  return normalizeCoachResponse(data);
+}
+
+/** @deprecated Prefer callCoachWithProposals for structured actions; kept for compatibility. */
+export async function callCoach(params: CoachCallParams): Promise<string> {
+  const { text } = await callCoachWithProposals(params);
+  return text;
 }
 

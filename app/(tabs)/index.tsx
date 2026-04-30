@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { router } from 'expo-router';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   TextInput, Modal, Vibration, ActivityIndicator, Switch, Linking, Animated, Easing
@@ -1133,6 +1134,19 @@ function TrainScreen({ onBack, userId, character, onWorkoutComplete }: { onBack:
           </View>
 
           <Text style={s.routineLabel}>WORKOUT TEMPLATES</Text>
+          <TouchableOpacity
+            style={[s.routineCard, { borderColor: '#c9a84c', borderWidth: 1, marginBottom: 10 }]}
+            onPress={() => router.push('/(tabs)/training?create=1')}
+            activeOpacity={0.85}
+          >
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={s.routineName}>Create workout</Text>
+              <Text style={{ fontSize: 12, color: IronLore.colors.muted, lineHeight: 16 }}>
+                Add exercises, name it anything (Legs, Monday, Push day…), and save as a reusable template.
+              </Text>
+            </View>
+            <Text style={{ fontSize: 22, color: '#c9a84c' }}>+</Text>
+          </TouchableOpacity>
           {WORKOUT_TEMPLATES.map((t) => (
             <TouchableOpacity
               key={t.id}
@@ -1876,7 +1890,8 @@ function ProfileScreen({ onBack, userId, character, coins, streak, onSignOut, on
             <Text style={{ fontSize: 18 }}>🚪</Text>
             <Text style={pr.settingText}>Sign Out</Text>
             <Text style={{ fontSize: 16, color: '#444' }}>›</Text>
-          </TouchableOpacity>        </View>
+          </TouchableOpacity>
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>

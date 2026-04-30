@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Linking, Modal, ScrollView, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { IronLore } from '@/src/ui/ironloreTokens';
+import { loadNutritionDay, saveNutritionDay, type LoggedFoodItem } from '@/src/data/nutritionDayStore';
 
 function ManualFoodEntry(props: { onAdd: (food: any) => void; s: any }) {
   const { onAdd, s } = props;
@@ -58,7 +57,7 @@ export function NutritionScreen(props: {
 
   const [nutView, setNutView] = useState<'log' | 'search' | 'scan'>('log');
   const [activeMeal, setActiveMeal] = useState('Breakfast');
-  const [logged, setLogged] = useState<any[]>([]);
+  const [logged, setLogged] = useState<LoggedFoodItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
@@ -78,22 +77,17 @@ export function NutritionScreen(props: {
     return new Date().toISOString().split('T')[0];
   }
 
-  async function persistDaySummary(nextTotals: { calories: number; protein: number; carbs: number; fat: number }) {
-    const date = todayKey();
-    const key = `ironlore:nutritionDay:${date}`;
-    const hitProteinGoal = nextTotals.protein >= goals.protein;
-    const hitCaloriesTarget = goals.calories > 0 ? Math.abs(nextTotals.calories - goals.calories) / goals.calories <= 0.10 : false;
-    await AsyncStorage.setItem(key, JSON.stringify({
-      date,
-      totals: {
-        calories: Math.round(nextTotals.calories),
-        protein: Math.round(nextTotals.protein),
-        carbs: Math.round(nextTotals.carbs),
-        fat: Math.round(nextTotals.fat),
-      },
-      hitProteinGoal,
-      hitCaloriesTarget,
-    }));
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const items = await loadNutritionDay(todayKey());
+      if (!cancelled) setLogged(items);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function persistLogged(updated: LoggedFoodItem[]) {
+    await saveNutritionDay(todayKey(), updated, goals);
   }
 
   async function searchFood(query: string) {
@@ -163,7 +157,7 @@ export function NutritionScreen(props: {
   }
 
   function addFood(food: any) {
-    const updated = [...logged, { ...food, meal: activeMeal, qty: 1 }];
+    const updated: LoggedFoodItem[] = [...logged, { ...food, meal: activeMeal, qty: 1 }];
     setLogged(updated);
     const nextTotals = updated.reduce((acc, item) => ({
       calories: acc.calories + item.calories * item.qty,
@@ -173,7 +167,7 @@ export function NutritionScreen(props: {
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
     onProteinUpdate?.(nextTotals.protein);
     onTotalsUpdate?.(nextTotals);
-    persistDaySummary(nextTotals).catch(() => {});
+    persistLogged(updated).catch(() => {});
     setNutView('log');
     setSearchQuery('');
     setSearchResults([]);
@@ -191,7 +185,7 @@ export function NutritionScreen(props: {
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
     onProteinUpdate?.(nextTotals.protein);
     onTotalsUpdate?.(nextTotals);
-    persistDaySummary(nextTotals).catch(() => {});
+    persistLogged(updated).catch(() => {});
   }
 
   const remainingProtein = goals.protein - totals.protein;
