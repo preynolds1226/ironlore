@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { callCoachWithProposals, CoachError, type CoachMessage } from '@/src/ai/coachClient';
 import type { CoachProposal } from '@/src/ai/coachProposals';
@@ -9,6 +21,13 @@ import { DEFAULT_NUTRITION_GOALS } from '@/src/constants/defaultNutritionGoals';
 import { appendNutritionItems, loadNutritionDay, totalsFromItems } from '@/src/data/nutritionDayStore';
 import { deleteTemplate, listTemplates, upsertTemplate } from '@/src/data/trainingTemplates';
 import { CLASSES } from '@/src/domain/gameData';
+import {
+  FREE_COACH_MESSAGES_PER_DAY,
+  freeCoachMessagesRemaining,
+  getCoachMessagesUsedToday,
+  incrementCoachMessageSuccess,
+} from '@/src/purchases/coachUsage';
+import { usePremium } from '@/src/purchases/PremiumContext';
 import { useIsOnline } from '@/src/system/network';
 
 export type CoachCharacter = { name?: string; classId?: string };
@@ -62,6 +81,24 @@ export function CoachScreen(props: {
   const scrollRef = useRef<ScrollView | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isOnline = useIsOnline();
+  const insets = useSafeAreaInsets();
+  const { isPremium, purchaseDefault, restore, purchasesConfigured } = usePremium();
+  const [coachFreeRemaining, setCoachFreeRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (isPremium) {
+        if (!cancelled) setCoachFreeRemaining(null);
+        return;
+      }
+      const used = await getCoachMessagesUsedToday();
+      if (!cancelled) setCoachFreeRemaining(freeCoachMessagesRemaining(used));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPremium]);
 
   const systemPrompt = `You are the AI coach for IronLore, a LitRPG fitness app. The user's warrior class is ${chosenClass?.name || 'Warrior'}. 
 
@@ -85,12 +122,23 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
 
     if (err instanceof CoachError) {
       if (err.code === 'offline') return 'No signal. The realm is dark. Reconnect and try again.';
-      if (err.code === 'unauthenticated') return 'Your oath is unbound. Log in again.';
+      if (err.code === 'unauthenticated') {
+        return 'Sign in required. Open the home screen and log in so the Coach can reach the forge (Supabase session).';
+      }
+      if (err.code === 'config') {
+        const hint = err.message?.trim() ? err.message.trim().slice(0, 200) : '';
+        return hint
+          ? `This build is missing server configuration. ${hint}`
+          : 'This build is missing Supabase configuration. Rebuild with EXPO_PUBLIC_* env or app.json extra.';
+      }
       if (err.code === 'rate_limited') {
         const wait = typeof err.retryAfterSeconds === 'number' ? Math.max(0, Math.ceil(err.retryAfterSeconds)) : null;
         return wait !== null ? `Easy. You’re swinging too fast. Wait ${wait}s, then try again.` : 'Easy. You’re swinging too fast. Give it a moment.';
       }
-      if (err.code === 'server') return 'The forge is roaring. Give it a moment, then try again.';
+      if (err.code === 'server') {
+        const hint = err.message?.trim() ? err.message.trim().slice(0, 180) : null;
+        return hint ? `The forge is roaring. ${hint}` : 'The forge is roaring. Give it a moment, then try again.';
+      }
       if (err.code === 'bad_request') return 'Your request was malformed. Shorten it and try again.';
     }
 
@@ -100,12 +148,40 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
   async function sendMessage(override?: string) {
     const raw = (override ?? input).trim();
     if (!raw || loading) return;
+    if (!userId) {
+      Alert.alert(
+        'Sign in to use the Coach',
+        'The AI Coach needs an active account session. Go back, sign in from the home screen, then return here.',
+        [{ text: 'OK' }, { text: 'Go back', onPress: onBack }],
+      );
+      return;
+    }
     if (!isOnline) {
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: 'No signal. The realm is dark. Reconnect and try again.', proposals: [], proposalStatuses: [] },
       ]);
       return;
+    }
+
+    if (!isPremium) {
+      const used = await getCoachMessagesUsedToday();
+      if (used >= FREE_COACH_MESSAGES_PER_DAY) {
+        Alert.alert(
+          'Daily coach limit',
+          `Free plan includes ${FREE_COACH_MESSAGES_PER_DAY} coach messages per day (resets at midnight). IronLore+ includes unlimited coaching.`,
+          [
+            { text: 'Not now', style: 'cancel' },
+            ...(purchasesConfigured
+              ? [
+                  { text: 'Restore', onPress: () => void restore() },
+                  { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                ]
+              : []),
+          ],
+        );
+        return;
+      }
     }
 
     const content = raw.slice(0, 4000);
@@ -122,13 +198,15 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
       abortRef.current = new AbortController();
 
       let workoutTemplates: { id: string; name: string }[] | undefined;
-      if (userId) {
+      if (userId && isPremium) {
         try {
           const tpl = await listTemplates(userId);
           workoutTemplates = tpl.map((t) => ({ id: t.id, name: t.name }));
         } catch {
           workoutTemplates = [];
         }
+      } else {
+        workoutTemplates = [];
       }
       let nutritionToday: { calories: number; protein: number; carbs: number; fat: number } | undefined;
       try {
@@ -157,6 +235,11 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
           proposalStatuses: proposals.map(() => 'pending'),
         },
       ]);
+      if (!isPremium) {
+        await incrementCoachMessageSuccess();
+        const used = await getCoachMessagesUsedToday();
+        setCoachFreeRemaining(freeCoachMessagesRemaining(used));
+      }
     } catch (err: any) {
       const text = errorToCoachText(err);
       if (text) {
@@ -176,6 +259,19 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
 
     try {
       if (p.type === 'workout_template_upsert') {
+        if (!isPremium) {
+          Alert.alert(
+            'IronLore+',
+            'Saving cloud workout templates is part of IronLore+. Subscribe from the Training tab, or log food from here without templates.',
+            purchasesConfigured
+              ? [
+                  { text: 'OK' },
+                  { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                ]
+              : [{ text: 'OK' }],
+          );
+          return;
+        }
         if (!userId) {
           Alert.alert('Sign in', 'Log in to save workout templates.');
           return;
@@ -201,6 +297,19 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
           { text: 'Training', onPress: () => router.push('/(tabs)/training') },
         ]);
       } else if (p.type === 'workout_template_delete') {
+        if (!isPremium) {
+          Alert.alert(
+            'IronLore+',
+            'Cloud template sync is part of IronLore+.',
+            purchasesConfigured
+              ? [
+                  { text: 'OK' },
+                  { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                ]
+              : [{ text: 'OK' }],
+          );
+          return;
+        }
         if (!userId) {
           Alert.alert('Sign in', 'Log in to delete templates.');
           return;
@@ -277,6 +386,7 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
             {chosenClass?.name || 'Warrior'} Coach
           </Text>
           <Text style={co.coachTagline}>{chosenClass?.tagline || 'Forge your body in iron and fire'}</Text>
+          <Text style={co.aiDisclosure}>Coach replies are generated by AI; verify important training or nutrition decisions.</Text>
         </View>
         <View style={co.onlineDot} />
       </View>
@@ -287,13 +397,31 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
         </View>
       )}
 
-      <ScrollView
-        ref={(r) => { scrollRef.current = r; }}
-        showsVerticalScrollIndicator={false}
+      {!userId && (
+        <View style={co.authBanner}>
+          <Text style={co.authBannerText}>
+            Sign in from the home screen to use the AI Coach. Templates and food suggestions also need an account when saving.
+          </Text>
+          <TouchableOpacity style={co.authBannerBtn} onPress={onBack}>
+            <Text style={co.authBannerBtnText}>Go back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, gap: 12 }}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
+        <ScrollView
+          ref={(r) => { scrollRef.current = r; }}
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        >
         {messages.map((msg, i) => (
           <View key={i}>
             <View style={[co.bubble, msg.role === 'user' ? co.userBubble : co.assistantBubble]}>
@@ -339,27 +467,42 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
           </View>
         )}
         <View style={{ height: 20 }} />
-      </ScrollView>
+        </ScrollView>
 
-      <View style={co.inputRow}>
-        <TextInput
-          style={co.input}
-          value={input}
-          onChangeText={setInput}
-          placeholder="Ask your coach..."
-          placeholderTextColor="#444"
-          multiline
-          onSubmitEditing={() => sendMessage()}
-          editable={!loading}
-        />
-        <TouchableOpacity
-          style={[co.sendBtn, { backgroundColor: input.trim() && !loading && isOnline ? '#c9a84c' : '#2a2a3a' }]}
-          onPress={() => sendMessage()}
-          disabled={!input.trim() || loading || !isOnline}
-        >
-          <Text style={{ fontSize: 18 }}>↑</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={[co.inputRow, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+          {!isPremium && coachFreeRemaining !== null && purchasesConfigured && (
+            <Text style={{ fontSize: 11, color: '#6b6b7a', marginBottom: 6, paddingHorizontal: 4 }}>
+              Free: {coachFreeRemaining} coach message{coachFreeRemaining === 1 ? '' : 's'} left today · IronLore+ unlimited
+            </Text>
+          )}
+          <TextInput
+            style={co.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder="Ask your coach..."
+            placeholderTextColor="#444"
+            multiline
+            onSubmitEditing={() => sendMessage()}
+            editable={!loading && !!userId}
+            onFocus={() => {
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
+            }}
+          />
+          <TouchableOpacity
+            style={[
+              co.sendBtn,
+              {
+                backgroundColor:
+                  input.trim() && !loading && isOnline && userId ? '#c9a84c' : '#2a2a3a',
+              },
+            ]}
+            onPress={() => sendMessage()}
+            disabled={!input.trim() || loading || !isOnline || !userId}
+          >
+            <Text style={{ fontSize: 18 }}>↑</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -380,15 +523,30 @@ const co = StyleSheet.create({
   coachAvatar: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   coachName: { fontSize: 15, fontWeight: '700' },
   coachTagline: { fontSize: 11, color: '#888899', fontStyle: 'italic' },
+  aiDisclosure: { fontSize: 10, color: '#666677', marginTop: 6, lineHeight: 14 },
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4cc97a' },
   offlineBanner: { marginHorizontal: 16, marginTop: 10, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.35)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12 },
   offlineText: { fontSize: 12, color: '#fecaca', fontWeight: '700', textAlign: 'center' },
+  authBanner: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    backgroundColor: 'rgba(201,168,76,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.35)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+  authBannerText: { fontSize: 12, color: '#e8e8f0', fontWeight: '600', textAlign: 'center', lineHeight: 18 },
+  authBannerBtn: { alignSelf: 'center', backgroundColor: 'rgba(201,168,76,0.2)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999 },
+  authBannerBtnText: { fontSize: 12, fontWeight: '800', color: '#c9a84c' },
   bubble: { maxWidth: '85%', borderRadius: 16, padding: 14 },
   assistantBubble: { backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
   userBubble: { backgroundColor: '#c9a84c', alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   bubbleText: { fontSize: 14, color: '#e8e8f0', lineHeight: 20 },
   userBubbleText: { color: '#0a0a0f', fontWeight: '600' },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, paddingBottom: 32, gap: 10, borderTopWidth: 1, borderTopColor: '#1a1a2a' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: '#1a1a2a' },
   input: { flex: 1, backgroundColor: '#12121a', borderWidth: 1, borderColor: '#2a2a3a', borderRadius: 14, padding: 12, fontSize: 14, color: '#e8e8f0', maxHeight: 100 },
   sendBtn: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   retryBtn: { backgroundColor: 'rgba(201,168,76,0.12)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },

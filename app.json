@@ -14,9 +14,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ironlore.app",
-      "buildNumber": "1",
+      "buildNumber": "4",
       "infoPlist": {
-        "NSCameraUsageDescription": "IronLore uses your camera to scan food barcodes for nutrition logging."
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "IronLore uses your camera to scan food barcodes and to take meal photos for estimated nutrition logging."
       }
     },
     "android": {
@@ -39,9 +40,13 @@
       ]
     ],
     "extra": {
+      "revenueCatIosApiKey": "test_IeKfeOYXfqovYJQTUYVIbUPGlKO",
       "supabaseUrl": "https://blrvttulfyeoqromogfz.supabase.co",
-      "supabaseAnonKey": "",
-      "supabaseFunctionsUrl": "https://blrvttulfyeoqromogfz.supabase.co/functions/v1"
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJscnZ0dHVsZnllb3Fyb21vZ2Z6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjgxOTIsImV4cCI6MjA5Mjk0NDE5Mn0.qVS81Q1cLxO5rBmAQTBwAgwYVr_fVkfJ6UZwd0s7Tb0",
+      "supabaseFunctionsUrl": "https://blrvttulfyeoqromogfz.supabase.co/functions/v1",
+      "eas": {
+        "projectId": "e4e02836-3011-4e80-b0af-ab48eb068045"
+      }
     }
   }
 }

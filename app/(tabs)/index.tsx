@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import {
+  Alert,
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   TextInput, Modal, Vibration, ActivityIndicator, Switch, Linking, Animated, Easing
 } from 'react-native';
@@ -15,8 +16,11 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/src/data/supabaseClient';
 import { ACHIEVEMENTS, CLASSES, GOAL_PATHS, SHOP_ITEMS } from '@/src/domain/gameData';
 import { IronLore } from '@/src/ui/ironloreTokens';
+import { AppleHealthHomeRow } from '@/src/components/AppleHealthHomeRow';
 import { CoachScreen } from '@/src/screens/CoachScreen';
 import { NutritionScreen as NutritionScreenComponent } from '@/src/screens/NutritionScreen';
+import { SettingsSubscriptionCard } from '@/src/purchases/SettingsSubscriptionCard';
+import { isRevenueCatNativeAvailable } from '@/src/purchases/isRevenueCatNativeAvailable';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -213,13 +217,14 @@ const auth = StyleSheet.create({
 // SETTINGS SCREEN
 // ============================================================
 
-function SettingsScreen({ onBack, userId, character, cleanMode, onCleanModeToggle, onUpdate }: {
+function SettingsScreen({ onBack, userId, character, cleanMode, onCleanModeToggle, onUpdate, onAccountDeleted }: {
   onBack: () => void;
   userId: string;
   character: any;
   cleanMode: boolean;
   onCleanModeToggle: (val: boolean) => void;
   onUpdate: (data: { name: string; goalId: string; calorieGoal: number; proteinGoal: number }) => void;
+  onAccountDeleted?: () => void;
 }) {
   const [name, setName] = useState(character?.name || '');
   const [goalId, setGoalId] = useState(character?.goalId || '');
@@ -231,6 +236,7 @@ function SettingsScreen({ onBack, userId, character, cleanMode, onCleanModeToggl
   const [handle, setHandle] = useState('');
   const [privacyWorkouts, setPrivacyWorkouts] = useState<'private' | 'friends' | 'public'>('friends');
   const [saveError, setSaveError] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     Notifications.getPermissionsAsync()
@@ -299,6 +305,80 @@ function SettingsScreen({ onBack, userId, character, cleanMode, onCleanModeToggl
             trackColor={{ false: IronLore.colors.border, true: IronLore.colors.gold }}
             thumbColor={cleanMode ? IronLore.colors.bg : IronLore.colors.muted}
           />
+        </View>
+
+        <Text style={[s.sectionTitle, { marginBottom: 10 }]}>IRONLORE+</Text>
+        <View style={{ marginBottom: 20 }}>
+          <SettingsSubscriptionCard />
+        </View>
+
+        <Text style={[s.sectionTitle, { marginBottom: 10 }]}>ACCOUNT</Text>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 12, color: IronLore.colors.muted, lineHeight: 18, marginBottom: 12 }}>
+            Permanently delete your IronLore account and data stored with us. Apple subscriptions are managed separately in
+            Settings ▸ Apple ID ▸ Subscriptions.
+          </Text>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 14,
+              alignItems: 'center',
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: 'rgba(255,80,80,0.35)',
+              backgroundColor: 'rgba(255,80,80,0.08)',
+            }}
+            disabled={deletingAccount}
+            activeOpacity={0.85}
+            onPress={() => {
+              Alert.alert(
+                'Delete account?',
+                'This removes your profile, workouts, friends, and templates from IronLore. This cannot be undone.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                      void (async () => {
+                        setDeletingAccount(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+                          if (error) throw error;
+                          if (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error) {
+                            throw new Error(String((data as { error: string }).error));
+                          }
+                          if (isRevenueCatNativeAvailable()) {
+                            try {
+                              const { default: Purchases } = await import('react-native-purchases');
+                              await Purchases.logOut();
+                            } catch {
+                              /* ignore */
+                            }
+                          }
+                          await supabase.auth.signOut();
+                          onAccountDeleted?.();
+                        } catch (e: unknown) {
+                          const msg = e instanceof Error ? e.message : 'Something went wrong.';
+                          Alert.alert(
+                            'Could not delete account',
+                            `${msg}\n\nIf this keeps happening, deploy the delete-account Edge Function (see supabase/functions/delete-account) or contact support.`,
+                          );
+                        } finally {
+                          setDeletingAccount(false);
+                        }
+                      })();
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            {deletingAccount ? (
+              <ActivityIndicator color="#ff8888" />
+            ) : (
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#ff6b6b' }}>Delete account</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Notifications */}
@@ -1115,25 +1195,15 @@ function TrainScreen({ onBack, userId, character, onWorkoutComplete }: { onBack:
           <View style={{ width: 60 }} />
         </View>
         <ScrollView contentContainerStyle={{ padding: 20 }}>
-          <Text style={s.routineLabel}>NON-GYM MODES</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-            {NON_GYM_MODES.map((m) => (
-              <TouchableOpacity
-                key={m.id}
-                style={[s.routineCard, { width: '48%', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}
-                onPress={() => startNonGym(m.id)}
-                activeOpacity={0.85}
-              >
-                <Text style={{ fontSize: 22 }}>{m.icon}</Text>
-                <View style={{ gap: 2 }}>
-                  <Text style={s.routineName}>{m.title}</Text>
-                  <Text style={{ fontSize: 12, color: IronLore.colors.muted, lineHeight: 16 }}>{m.desc}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={s.routineLabel}>YOUR ROUTINES</Text>
+          {Object.keys(ROUTINES).map(name => (
+            <TouchableOpacity key={name} style={s.routineCard} onPress={() => startRoutine(name)} activeOpacity={0.85}>
+              <View><Text style={s.routineName}>{name}</Text><Text style={{ fontSize: 12, color: IronLore.colors.muted }}>{ROUTINES[name].length} exercises · 3 sets each</Text></View>
+              <Text style={{ fontSize: 22, color: IronLore.colors.muted }}>›</Text>
+            </TouchableOpacity>
+          ))}
 
-          <Text style={s.routineLabel}>WORKOUT TEMPLATES</Text>
+          <Text style={[s.routineLabel, { marginTop: 8 }]}>WORKOUT TEMPLATES</Text>
           <TouchableOpacity
             style={[s.routineCard, { borderColor: '#c9a84c', borderWidth: 1, marginBottom: 10 }]}
             onPress={() => router.push('/(tabs)/training?create=1')}
@@ -1166,13 +1236,24 @@ function TrainScreen({ onBack, userId, character, onWorkoutComplete }: { onBack:
             <Text style={{ fontSize: 28 }}>⚡</Text>
             <View><Text style={s.quickStartTitle}>Quick Start</Text><Text style={{ fontSize: 12, color: IronLore.colors.muted }}>Blank session — add exercises as you go</Text></View>
           </TouchableOpacity>
-          <Text style={s.routineLabel}>YOUR ROUTINES</Text>
-          {Object.keys(ROUTINES).map(name => (
-            <TouchableOpacity key={name} style={s.routineCard} onPress={() => startRoutine(name)} activeOpacity={0.85}>
-              <View><Text style={s.routineName}>{name}</Text><Text style={{ fontSize: 12, color: IronLore.colors.muted }}>{ROUTINES[name].length} exercises · 3 sets each</Text></View>
-              <Text style={{ fontSize: 22, color: IronLore.colors.muted }}>›</Text>
-            </TouchableOpacity>
-          ))}
+
+          <Text style={[s.routineLabel, { marginTop: 20 }]}>NON-GYM MODES</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            {NON_GYM_MODES.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                style={[s.routineCard, { width: '48%', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}
+                onPress={() => startNonGym(m.id)}
+                activeOpacity={0.85}
+              >
+                <Text style={{ fontSize: 22 }}>{m.icon}</Text>
+                <View style={{ gap: 2 }}>
+                  <Text style={s.routineName}>{m.title}</Text>
+                  <Text style={{ fontSize: 12, color: IronLore.colors.muted, lineHeight: 16 }}>{m.desc}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </ScrollView>
       </View>
     );
@@ -3371,6 +3452,8 @@ export default function HomeScreen() {
   const [proteinToday, setProteinToday] = useState(0);
   const [waterOz, setWaterOz] = useState(0);
   const [waterGoalOz, setWaterGoalOz] = useState(80);
+  const [appleStepsToday, setAppleStepsToday] = useState(0);
+  const onAppleHealthSteps = useCallback((n: number) => setAppleStepsToday(n), []);
   const [coins, setCoins] = useState(1250);
   const [dailyRewardOpen, setDailyRewardOpen] = useState(false);
   const [dailyRewardCoins, setDailyRewardCoins] = useState(0);
@@ -3687,20 +3770,22 @@ export default function HomeScreen() {
   }
 
   const homeContent = (
-    <View style={s.root}>
-      <StatusBar style="light" />
+    <View style={[s.root, cleanMode && sc.root]}>
+      <StatusBar style={cleanMode ? 'dark' : 'light'} />
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
 
         <View style={s.header}>
-          <Text style={s.logo}>IRONLORE</Text>
+          <Text style={[s.logo, cleanMode && sc.logo]}>IRONLORE</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity
-              style={[s.coinDisplay, { backgroundColor: 'rgba(255,255,255,0.06)' }]}
-              onPress={() => setShareOpen(true)}
-              activeOpacity={0.85}
-            >
-              <Text style={s.coinDisplayText}>↗ Share</Text>
-            </TouchableOpacity>
+            {!cleanMode && (
+              <TouchableOpacity
+                style={[s.coinDisplay, { backgroundColor: 'rgba(255,255,255,0.06)' }]}
+                onPress={() => setShareOpen(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={s.coinDisplayText}>↗ Share</Text>
+              </TouchableOpacity>
+            )}
             {!cleanMode && (
               <TouchableOpacity style={s.coinDisplay} onPress={() => setScreen('shop')}>
                 <Text style={s.coinDisplayText}>🪙 {coins.toLocaleString()}</Text>
@@ -3710,41 +3795,48 @@ export default function HomeScreen() {
               <View style={s.streakBadge}><Text style={s.streakText}>🔥 {streak}</Text></View>
             )}
             <TouchableOpacity onPress={() => setScreen('profile')}>
-              <View style={[s.avatarCircle, { borderColor: chosenClass?.color || '#c9a84c', backgroundColor: chosenClass ? `${chosenClass.color}30` : '#8b2020' }]}>
+              <View style={[
+                s.avatarCircle,
+                cleanMode
+                  ? sc.avatarCircle
+                  : { borderColor: chosenClass?.color || '#c9a84c', backgroundColor: chosenClass ? `${chosenClass.color}30` : '#8b2020' },
+              ]}>
                 <Text style={{ fontSize: 16 }}>{chosenClass?.icon || '⚔️'}</Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={s.wellnessCard}>
+        <View style={[s.wellnessCard, cleanMode && sc.wellnessCard]}>
           <View style={s.wellnessTop}>
-            <Text style={s.wellnessTitle}>WELLNESS SCORE</Text>
-            <Text style={s.wellnessScore}>{wellnessScore}</Text>
+            <Text style={[s.wellnessTitle, cleanMode && sc.wellnessTitle]}>WELLNESS SCORE</Text>
+            <Text style={[s.wellnessScore, cleanMode && sc.wellnessScore]}>{wellnessScore}</Text>
           </View>
-          <View style={s.wellnessBarBg}>
-            <View style={[s.wellnessBarFill, { width: `${Math.max(0, Math.min(100, wellnessScore))}%` }]} />
+          <View style={[s.wellnessBarBg, cleanMode && sc.wellnessBarBg]}>
+            <View style={[s.wellnessBarFill, cleanMode && sc.wellnessBarFill, { width: `${Math.max(0, Math.min(100, wellnessScore))}%` }]} />
           </View>
           <View style={s.wellnessBreakdown}>
-            <Text style={s.wellnessChip}>{workoutDoneToday ? '🏋️ Workout ✓' : '🏋️ Workout'}</Text>
-            <Text style={s.wellnessChip}>🥩 {Math.round(proteinToday)}/{GOALS.protein}g</Text>
-            <Text style={s.wellnessChip}>💊 {morningSuppsCount}/{morningSuppsTotal}</Text>
-            <Text style={s.wellnessChip}>🔥 {streak}d</Text>
+            <Text style={[s.wellnessChip, cleanMode && sc.wellnessChip]}>{workoutDoneToday ? '🏋️ Workout ✓' : '🏋️ Workout'}</Text>
+            <Text style={[s.wellnessChip, cleanMode && sc.wellnessChip]}>🥩 {Math.round(proteinToday)}/{GOALS.protein}g</Text>
+            <Text style={[s.wellnessChip, cleanMode && sc.wellnessChip]}>💊 {morningSuppsCount}/{morningSuppsTotal}</Text>
+            <Text style={[s.wellnessChip, cleanMode && sc.wellnessChip]}>🔥 {streak}d</Text>
           </View>
 
           <TouchableOpacity
-            style={s.waterRow}
+            style={[s.waterRow, cleanMode && sc.waterRow]}
             onPress={() => setScreen('water')}
             activeOpacity={0.85}
           >
-            <Text style={s.waterLabel}>💧 Water</Text>
+            <Text style={[s.waterLabel, cleanMode && sc.waterLabel]}>💧 Water</Text>
             <View style={{ flex: 1, marginHorizontal: 10 }}>
-              <View style={s.waterBarBg}>
+              <View style={[s.waterBarBg, cleanMode && sc.waterBarBg]}>
                 <View style={[s.waterBarFill, { width: `${Math.min((waterOz / waterGoalOz) * 100, 100)}%` as any }]} />
               </View>
             </View>
-            <Text style={s.waterValue}>{Math.round(waterOz)}/{waterGoalOz}oz</Text>
+            <Text style={[s.waterValue, cleanMode && sc.waterValue]}>{Math.round(waterOz)}/{waterGoalOz}oz</Text>
           </TouchableOpacity>
+
+          <AppleHealthHomeRow onTodayStepsChange={onAppleHealthSteps} cleanMode={cleanMode} />
         </View>
 
         {!cleanMode && (
@@ -3800,17 +3892,17 @@ export default function HomeScreen() {
               <Text style={s.quickActionText}>Achievements</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('history')}>
+          <TouchableOpacity style={[s.quickActionBtn, cleanMode && sc.quickActionBtn]} onPress={() => setScreen('history')}>
             <Text style={{ fontSize: 20 }}>📋</Text>
-            <Text style={s.quickActionText}>History</Text>
+            <Text style={[s.quickActionText, cleanMode && sc.quickActionText]}>History</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('bodyweight')}>
+          <TouchableOpacity style={[s.quickActionBtn, cleanMode && sc.quickActionBtn]} onPress={() => setScreen('bodyweight')}>
             <Text style={{ fontSize: 20 }}>⚖️</Text>
-            <Text style={s.quickActionText}>Body Weight</Text>
+            <Text style={[s.quickActionText, cleanMode && sc.quickActionText]}>Body Weight</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.quickActionBtn} onPress={() => setScreen('coach')}>
+          <TouchableOpacity style={[s.quickActionBtn, cleanMode && sc.quickActionBtn]} onPress={() => setScreen('coach')}>
             <Text style={{ fontSize: 20 }}>🤖</Text>
-            <Text style={s.quickActionText}>Coach</Text>
+            <Text style={[s.quickActionText, cleanMode && sc.quickActionText]}>Coach</Text>
           </TouchableOpacity>
         </View>
 
@@ -3824,8 +3916,8 @@ export default function HomeScreen() {
 
         <View style={s.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={s.sectionTitle}>{cleanMode ? 'TODAY\'S GOALS' : 'DAILY QUESTS'}</Text>
-            <Text style={{ fontSize: 11, color: '#c9a84c' }}>View All →</Text>
+            <Text style={[s.sectionTitle, cleanMode && sc.sectionTitle]}>{cleanMode ? 'TODAY\'S GOALS' : 'DAILY QUESTS'}</Text>
+            <Text style={{ fontSize: 11, color: cleanMode ? IronLore.cleanHome.accent : '#c9a84c' }}>View All →</Text>
           </View>
           {[
             {
@@ -3858,19 +3950,19 @@ export default function HomeScreen() {
             {
               icon: '🏃',
               name: '10,000 Steps',
-              sub: '0 / 10,000 steps',
-              fill: 0.0,
-              color: '#c9a84c',
-              done: false,
+              sub: `${appleStepsToday.toLocaleString()} / 10,000 steps`,
+              fill: Math.min(appleStepsToday / 10000, 1.0),
+              color: cleanMode ? IronLore.cleanHome.bar : '#c9a84c',
+              done: appleStepsToday >= 10000,
               xp: '+150 XP',
             },
           ].map((quest) => (
-            <View key={quest.name} style={[s.questCard, quest.done && s.questDone]}>
+            <View key={quest.name} style={[s.questCard, cleanMode && sc.questCard, quest.done && (cleanMode ? sc.questDone : s.questDone)]}>
               <Text style={{ fontSize: 22 }}>{quest.icon}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={s.questName}>{quest.name}</Text>
-                <Text style={s.questSub}>{quest.sub}</Text>
-                <View style={s.questBar}>
+                <Text style={[s.questName, cleanMode && sc.questName]}>{quest.name}</Text>
+                <Text style={[s.questSub, cleanMode && sc.questSub]}>{quest.sub}</Text>
+                <View style={[s.questBar, cleanMode && sc.questBar]}>
                   <View style={[s.questFill, { width: `${quest.fill * 100}%` as any, backgroundColor: quest.color }]} />
                 </View>
               </View>
@@ -3913,13 +4005,13 @@ export default function HomeScreen() {
 
         <View style={s.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={s.sectionTitle}>TODAY&apos;S STACK</Text>
-            <TouchableOpacity onPress={() => setScreen('supplements')}><Text style={{ fontSize: 11, color: '#c9a84c' }}>Manage →</Text></TouchableOpacity>
+            <Text style={[s.sectionTitle, cleanMode && sc.sectionTitle]}>TODAY&apos;S STACK</Text>
+            <TouchableOpacity onPress={() => setScreen('supplements')}><Text style={{ fontSize: 11, color: cleanMode ? IronLore.cleanHome.accent : '#c9a84c' }}>Manage →</Text></TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {['Zinc', 'Vitamin D3', 'Omega-3', 'Creatine', 'Magnesium 🌙', 'CJC-1295 🌙'].map((supp) => (
-              <TouchableOpacity key={supp} style={s.pill} onPress={() => setScreen('supplements')}>
-                <Text style={s.pillText}>{supp}</Text>
+              <TouchableOpacity key={supp} style={[s.pill, cleanMode && sc.pill]} onPress={() => setScreen('supplements')}>
+                <Text style={[s.pillText, cleanMode && sc.pillText]}>{supp}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -3927,10 +4019,10 @@ export default function HomeScreen() {
 
         <View style={s.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={s.sectionTitle}>NUTRITION</Text>
-            <Text style={{ fontSize: 12, color: '#c9a84c' }}>0 / 1,800 kcal</Text>
+            <Text style={[s.sectionTitle, cleanMode && sc.sectionTitle]}>NUTRITION</Text>
+            <Text style={{ fontSize: 12, color: cleanMode ? IronLore.cleanHome.accent : '#c9a84c' }}>0 / 1,800 kcal</Text>
           </View>
-          <View style={s.macroCard}>
+          <View style={[s.macroCard, cleanMode && sc.macroCard]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 }}>
               {[
                 { name: 'Protein', val: '0g', goal: '200g', pct: 0, color: '#c94c4c' },
@@ -3938,17 +4030,17 @@ export default function HomeScreen() {
                 { name: 'Fat', val: '0g', goal: '60g', pct: 0, color: '#4cc97a' },
               ].map((macro) => (
                 <View key={macro.name} style={{ alignItems: 'center' }}>
-                  <View style={{ width: 40, height: 60, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden', justifyContent: 'flex-end', marginBottom: 4 }}>
+                  <View style={{ width: 40, height: 60, backgroundColor: cleanMode ? IronLore.cleanHome.surface2 : 'rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden', justifyContent: 'flex-end', marginBottom: 4 }}>
                     <View style={{ width: '100%', height: `${macro.pct * 100}%` as any, backgroundColor: macro.color, borderRadius: 6 }} />
                   </View>
                   <Text style={[s.macroPct, { color: macro.color }]}>{Math.round(macro.pct * 100)}%</Text>
-                  <Text style={s.macroName}>{macro.name}</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: IronLore.colors.text, marginTop: 2 }}>{macro.val}/{macro.goal}</Text>
+                  <Text style={[s.macroName, cleanMode && sc.macroName]}>{macro.name}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: cleanMode ? IronLore.cleanHome.text : IronLore.colors.text, marginTop: 2 }}>{macro.val}/{macro.goal}</Text>
                 </View>
               ))}
             </View>
-            <TouchableOpacity style={s.logFoodBtn} onPress={() => setScreen('nutrition')}>
-              <Text style={s.logFoodText}>+ Log Food or Meal</Text>
+            <TouchableOpacity style={[s.logFoodBtn, cleanMode && sc.logFoodBtn]} onPress={() => setScreen('nutrition')}>
+              <Text style={[s.logFoodText, cleanMode && sc.logFoodText]}>+ Log Food or Meal</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -3971,7 +4063,7 @@ export default function HomeScreen() {
   else if (screen === 'analytics') content = <AnalyticsScreen onBack={() => setScreen('profile')} userId={userId} goals={GOALS} />;
   else if (screen === 'friends') content = <FriendsScreen onBack={() => setScreen('profile')} userId={userId} />;
   else if (screen === 'water') content = <WaterScreen onBack={() => setScreen('home')} waterOz={waterOz} waterGoalOz={waterGoalOz} onAdd={addWater} onSetGoal={setWaterGoal} />;
-  else if (screen === 'settings') content = <SettingsScreen onBack={() => setScreen('profile')} userId={userId} character={character} cleanMode={cleanMode} onCleanModeToggle={toggleCleanMode} onUpdate={({ name, goalId }) => { setCharacter((prev: any) => ({ ...prev, name, goalId })); setScreen('profile'); }} />;
+  else if (screen === 'settings') content = <SettingsScreen onBack={() => setScreen('profile')} userId={userId} character={character} cleanMode={cleanMode} onCleanModeToggle={toggleCleanMode} onUpdate={({ name, goalId }) => { setCharacter((prev: any) => ({ ...prev, name, goalId })); setScreen('profile'); }} onAccountDeleted={() => { setScreen('home'); }} />;
 
   const activeTab: 'home' | 'train' | 'coach' | 'nutrition' | 'profile' =
     screen === 'train' || screen === 'coach' || screen === 'nutrition' || screen === 'profile'
@@ -3979,7 +4071,7 @@ export default function HomeScreen() {
       : 'home';
 
   return (
-    <View style={{ flex: 1, backgroundColor: IronLore.colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: cleanMode && screen === 'home' ? IronLore.cleanHome.bg : IronLore.colors.bg }}>
       <View style={{ flex: 1 }}>
         {content}
       </View>
@@ -4019,7 +4111,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <Modal visible={dailyRewardOpen} transparent animationType="fade" onRequestClose={() => setDailyRewardOpen(false)}>
+      <Modal visible={dailyRewardOpen && !cleanMode} transparent animationType="fade" onRequestClose={() => setDailyRewardOpen(false)}>
         <View style={s.modalOverlay}>
           <View style={[s.modal, { borderTopLeftRadius: 24, borderTopRightRadius: 24 }]}>
             <Text style={s.modalTitle}>Daily Login Bonus</Text>
@@ -4103,7 +4195,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <BottomTabs activeKey={activeTab} onNavigate={(key) => setScreen(key)} />
+      <BottomTabs activeKey={activeTab} onNavigate={(key) => setScreen(key)} cleanMode={cleanMode} />
     </View>
   );
 }
@@ -4111,8 +4203,10 @@ export default function HomeScreen() {
 function BottomTabs(props: {
   activeKey: 'home' | 'train' | 'coach' | 'nutrition' | 'profile';
   onNavigate: (key: 'home' | 'train' | 'coach' | 'nutrition' | 'profile') => void;
+  cleanMode?: boolean;
 }) {
-  const { activeKey, onNavigate } = props;
+  const { activeKey, onNavigate, cleanMode } = props;
+  const isCleanHome = !!cleanMode && activeKey === 'home';
   const tabs: { icon: string; label: string; key: 'home' | 'train' | 'coach' | 'nutrition' | 'profile' }[] = [
     { icon: '🏠', label: 'Home', key: 'home' },
     { icon: '⚔️', label: 'Train', key: 'train' },
@@ -4122,15 +4216,21 @@ function BottomTabs(props: {
   ];
 
   return (
-    <View style={s.bottomNav}>
+    <View style={[s.bottomNav, isCleanHome && sc.bottomNav]}>
       {tabs.map((tab) => {
         const active = activeKey === tab.key;
         return (
           <TouchableOpacity key={tab.label} style={s.navItem} onPress={() => onNavigate(tab.key)} activeOpacity={0.85}>
-            <View style={{ width: 48, height: 32, borderRadius: 16, backgroundColor: active ? 'rgba(201,168,76,0.15)' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{
+              width: 48, height: 32, borderRadius: 16,
+              backgroundColor: active
+                ? (isCleanHome ? IronLore.cleanHome.accentMuted : 'rgba(201,168,76,0.15)')
+                : 'transparent',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
               <Text style={{ fontSize: 22 }}>{tab.icon}</Text>
             </View>
-            <Text style={[s.navLabel, active && s.navLabelActive]}>{tab.label}</Text>
+            <Text style={[s.navLabel, isCleanHome && sc.navLabel, active && (isCleanHome ? sc.navLabelActive : s.navLabelActive)]}>{tab.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -4516,4 +4616,56 @@ const s = StyleSheet.create({
   modalCancelText: { fontSize: 15, fontWeight: '700', color: IronLore.colors.muted },
   modalSave: { flex: 1, padding: 16, backgroundColor: IronLore.colors.gold, borderRadius: 12, alignItems: 'center' },
   modalSaveText: { fontSize: 15, fontWeight: '800', color: IronLore.colors.bg },
+});
+
+// ============================================================
+// CLEAN MODE HOME OVERRIDES (applied on top of `s` when cleanMode is on)
+// ============================================================
+const sc = StyleSheet.create({
+  root: { backgroundColor: IronLore.cleanHome.bg },
+  logo: { color: IronLore.cleanHome.text, letterSpacing: 2 },
+  avatarCircle: { borderColor: IronLore.cleanHome.border, backgroundColor: IronLore.cleanHome.surface2 },
+
+  // Wellness card
+  wellnessCard: { backgroundColor: IronLore.cleanHome.surface, borderColor: IronLore.cleanHome.border, shadowOpacity: 0.05, shadowRadius: 6, elevation: 1 },
+  wellnessTitle: { color: IronLore.cleanHome.muted },
+  wellnessScore: { color: IronLore.cleanHome.accent },
+  wellnessBarBg: { backgroundColor: IronLore.cleanHome.surface2 },
+  wellnessBarFill: { backgroundColor: IronLore.cleanHome.bar },
+  wellnessChip: { color: IronLore.cleanHome.muted, backgroundColor: IronLore.cleanHome.surface2, borderColor: IronLore.cleanHome.border },
+
+  // Water row
+  waterRow: { backgroundColor: IronLore.cleanHome.surface2, borderColor: IronLore.cleanHome.border },
+  waterLabel: { color: IronLore.cleanHome.text },
+  waterValue: { color: IronLore.cleanHome.accent },
+  waterBarBg: { backgroundColor: IronLore.cleanHome.border },
+
+  // Quick actions
+  quickActionBtn: { backgroundColor: IronLore.cleanHome.surface, borderColor: IronLore.cleanHome.border, shadowOpacity: 0.05, elevation: 1 },
+  quickActionText: { color: IronLore.cleanHome.muted },
+
+  // Section headers
+  sectionTitle: { color: IronLore.cleanHome.muted },
+
+  // Goal cards
+  questCard: { backgroundColor: IronLore.cleanHome.surface, borderColor: IronLore.cleanHome.border, shadowOpacity: 0.05, elevation: 1 },
+  questDone: { borderColor: 'rgba(22,163,74,0.3)', backgroundColor: 'rgba(22,163,74,0.04)' },
+  questName: { color: IronLore.cleanHome.text },
+  questSub: { color: IronLore.cleanHome.muted },
+  questBar: { backgroundColor: IronLore.cleanHome.surface2 },
+
+  // Supplement pills
+  pill: { backgroundColor: IronLore.cleanHome.surface, borderColor: IronLore.cleanHome.border },
+  pillText: { color: IronLore.cleanHome.muted },
+
+  // Nutrition / macro card
+  macroCard: { backgroundColor: IronLore.cleanHome.surface, borderColor: IronLore.cleanHome.border, shadowOpacity: 0.05, elevation: 1 },
+  macroName: { color: IronLore.cleanHome.muted },
+  logFoodBtn: { backgroundColor: IronLore.cleanHome.accentMuted, borderColor: 'rgba(59,107,218,0.25)' },
+  logFoodText: { color: IronLore.cleanHome.accent },
+
+  // Bottom nav
+  bottomNav: { backgroundColor: IronLore.cleanHome.surface, borderTopColor: IronLore.cleanHome.border },
+  navLabel: { color: IronLore.cleanHome.muted },
+  navLabelActive: { color: IronLore.cleanHome.accent },
 });

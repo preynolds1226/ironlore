@@ -3,13 +3,24 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "patch-package",
     "start": "expo start",
+    "eas:init": "eas init",
+    "eas:build:ios": "eas build -p ios --profile production",
+    "eas:submit:ios": "eas submit -p ios --latest",
+    "eas:inject-asc": "node scripts/inject-asc-issuer.mjs",
+    "eas:submit:ios:asc": "node scripts/inject-asc-issuer.mjs && eas submit -p ios --profile production --latest --non-interactive",
+    "eas:release:ios:ci": "bash scripts/eas-release-ios-noninteractive.sh",
     "reset-project": "node ./scripts/reset-project.js",
     "quest-card": "node ./scripts/generate-quest-card.mjs --input ./scripts/quest-card.example.json --out ./assets/share/quest-card.png",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "revenuecat:doctor": "node ./scripts/revenuecat-doctor.mjs",
+    "iap:setup": "node ./scripts/revenuecat-doctor.mjs",
+    "iap:sync-eas": "node ./scripts/iap-sync-eas.mjs",
+    "supabase:deploy:delete-account": "supabase functions deploy delete-account"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -19,6 +30,7 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.105.1",
+    "apple-health": "^0.0.4",
     "expo": "~54.0.33",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",
@@ -40,6 +52,7 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-purchases": "^10.0.1",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -50,8 +63,10 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "@types/react-native": "^0.72.8",
+    "eas-cli": "^16.28.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "patch-package": "^8.0.1",
     "sharp": "^0.34.5",
     "typescript": "~5.9.2"
   },

@@ -13,13 +13,48 @@ export default (): ExpoConfig => {
     base.extra?.supabaseFunctionsUrl ??
     (typeof supabaseUrl === 'string' ? `${supabaseUrl.replace(/\/+$/, '')}/functions/v1` : undefined);
 
+  const revenueCatIosApiKey =
+    process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY ?? (base.extra as Record<string, unknown> | undefined)?.revenueCatIosApiKey;
+  const revenueCatAndroidApiKey =
+    process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY ??
+    (base.extra as Record<string, unknown> | undefined)?.revenueCatAndroidApiKey;
+
+  const plugins = [
+    ...(base.plugins ?? []),
+    [
+      'apple-health',
+      {
+        healthSharePermission:
+          'IronLore reads steps, activity energy, walking distance, and flights climbed from Apple Health to show daily progress.',
+        healthUpdatePermission:
+          'IronLore may write workout data to Apple Health when you choose to sync completed sessions.',
+        backgroundDelivery: false,
+      },
+    ],
+  ] as ExpoConfig['plugins'];
+
+  const baseIos = (base.ios ?? {}) as NonNullable<ExpoConfig['ios']>;
+  const baseInfoPlist = (baseIos.infoPlist ?? {}) as Record<string, unknown>;
+
   return {
     ...base,
+    plugins,
+    ios: {
+      ...baseIos,
+      infoPlist: {
+        ...baseInfoPlist,
+        NSUserNotificationsUsageDescription:
+          (baseInfoPlist.NSUserNotificationsUsageDescription as string | undefined) ??
+          'IronLore can send optional reminders for coaching and daily progress when you allow notifications.',
+      },
+    },
     extra: {
       ...(base.extra ?? {}),
       supabaseUrl,
       supabaseAnonKey,
       supabaseFunctionsUrl,
+      revenueCatIosApiKey,
+      revenueCatAndroidApiKey,
     },
   };
 };

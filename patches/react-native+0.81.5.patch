@@ -1,0 +1,20 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 2a67797..ff1eebe 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -435,7 +435,14 @@ TraceSection s(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      // iOS 26+: void methods run async on the TM queue; convertNSExceptionToJSError touches Hermes off the JS
++      // thread and can abort (see facebook/react-native#54859, reactwg/new-architecture#276).
++      NSLog(
++          @"[RCTTurboModule] performVoidMethodInvocation caught NSException (module=%s method=%s): %@",
++          moduleName,
++          methodNameStr.c_str(),
++          exception);
++      return;
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }

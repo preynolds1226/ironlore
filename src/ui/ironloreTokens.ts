@@ -31,5 +31,19 @@ export const IronLore = {
     body: { fontSize: 13, lineHeight: 20 },
     button: { fontSize: 15, fontWeight: '900' as const, letterSpacing: 2 },
   },
+  /** Palette for Clean Mode home — light/minimal, no gamification chrome. */
+  cleanHome: {
+    bg: '#f5f5f7',
+    surface: '#ffffff',
+    surface2: '#f0f0f3',
+    border: '#e0e0e8',
+    text: '#111118',
+    muted: '#6b6b7a',
+    subtle: '#aaaabc',
+    accent: '#3b6bda',
+    accentMuted: 'rgba(59,107,218,0.12)',
+    green: '#16a34a',
+    bar: '#3b6bda',
+  },
 } as const;
 

@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "environment": "development",
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "environment": "preview",
+      "distribution": "internal"
+    },
+    "production": {
+      "environment": "production",
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6765777268",
+        "ascApiKeyPath": "./AuthKey_GXH8R3G48L.p8",
+        "ascApiKeyId": "GXH8R3G48L",
+        "ascApiKeyIssuerId": "10245641-6754-41b0-9f6a-368f4ca5a067"
+      }
+    }
+  }
+}

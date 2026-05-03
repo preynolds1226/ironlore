@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Linking, Modal, ScrollView, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
+import type { ElementRef } from 'react';
+import { ActivityIndicator, Alert, Keyboard, Linking, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { analyzeMealPhoto, MealVisionError } from '@/src/ai/mealVisionClient';
 import { IronLore } from '@/src/ui/ironloreTokens';
 import { loadNutritionDay, saveNutritionDay, type LoggedFoodItem } from '@/src/data/nutritionDayStore';
+import { usePremium } from '@/src/purchases/PremiumContext';
 
 function ManualFoodEntry(props: { onAdd: (food: any) => void; s: any }) {
   const { onAdd, s } = props;
@@ -61,10 +64,24 @@ export function NutritionScreen(props: {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
-  const [scanned, setScanned] = useState(false);
+  const [multiScan, setMultiScan] = useState(true);
+  const [scanDialogVisible, setScanDialogVisible] = useState(false);
+  const [scanDialogLoading, setScanDialogLoading] = useState(false);
+  const [scanDialogFood, setScanDialogFood] = useState<any | null>(null);
+  const [scanDialogPhotoItems, setScanDialogPhotoItems] = useState<any[] | null>(null);
+  const [scanDialogAssumptions, setScanDialogAssumptions] = useState<string | null>(null);
+  const [scanDialogError, setScanDialogError] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<'barcode' | 'photo'>('barcode');
+  const [cameraReady, setCameraReady] = useState(false);
+  const [photoCaptureBusy, setPhotoCaptureBusy] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [cameraPermissionSheet, setCameraPermissionSheet] = useState(false);
   const searchTimer = useRef<any>(null);
+  const lastBarcodeRef = useRef<{ code: string; t: number }>({ code: '', t: 0 });
+  const scanBusyRef = useRef(false);
+  const cameraRef = useRef<ElementRef<typeof CameraView>>(null);
+  const SCAN_DEBOUNCE_MS = 1800;
+  const { isPremium, purchaseDefault, purchasesConfigured } = usePremium();
 
   const totals = logged.reduce((acc, item) => ({
     calories: acc.calories + item.calories * item.qty,
@@ -116,36 +133,127 @@ export function NutritionScreen(props: {
     searchTimer.current = setTimeout(() => searchFood(text), 600);
   }
 
+  function closeScanDialog() {
+    setScanDialogVisible(false);
+    setScanDialogFood(null);
+    setScanDialogPhotoItems(null);
+    setScanDialogAssumptions(null);
+    setScanDialogError(null);
+    setScanDialogLoading(false);
+  }
+
+  async function lookupBarcodeProduct(code: string): Promise<any | null> {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}?fields=product_name,nutriments,serving_size,serving_quantity`);
+    const json = await res.json();
+    if (json.status !== 1 || !json.product) return null;
+    const p = json.product;
+    const hasServing = p.nutriments?.['energy-kcal_serving'] > 0;
+    return {
+      id: code,
+      name: p.product_name || 'Unknown Product',
+      calories: Math.round(hasServing ? p.nutriments?.['energy-kcal_serving'] : (p.nutriments?.['energy-kcal_100g'] * (parseFloat(p.serving_quantity) || 30) / 100)),
+      protein: Math.round(hasServing ? p.nutriments?.proteins_serving : (p.nutriments?.proteins_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
+      carbs: Math.round(hasServing ? p.nutriments?.carbohydrates_serving : (p.nutriments?.carbohydrates_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
+      fat: Math.round(hasServing ? p.nutriments?.fat_serving : (p.nutriments?.fat_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
+      serving: p.serving_size || '1 serving',
+    };
+  }
+
   async function handleBarcodeScan({ data }: { data: string }) {
-    if (scanned) return;
-    setScanned(true);
-    setNutView('search');
-    setSearching(true);
+    if (scanMode !== 'barcode') return;
+    if (scanBusyRef.current) return;
+
+    const now = Date.now();
+    if (data === lastBarcodeRef.current.code && now - lastBarcodeRef.current.t < SCAN_DEBOUNCE_MS) return;
+    lastBarcodeRef.current = { code: data, t: now };
+
+    scanBusyRef.current = true;
+    setScanDialogVisible(true);
+    setScanDialogLoading(true);
+    setScanDialogFood(null);
+    setScanDialogError(null);
+
     try {
-      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${data}?fields=product_name,nutriments,serving_size`);
-      const json = await res.json();
-      if (json.status === 1 && json.product) {
-        const p = json.product;
-        const hasServing = p.nutriments?.['energy-kcal_serving'] > 0;
-        const food = {
-          id: data,
-          name: p.product_name || 'Unknown Product',
-          calories: Math.round(hasServing ? p.nutriments?.['energy-kcal_serving'] : (p.nutriments?.['energy-kcal_100g'] * (parseFloat(p.serving_quantity) || 30) / 100)),
-          protein: Math.round(hasServing ? p.nutriments?.proteins_serving : (p.nutriments?.proteins_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
-          carbs: Math.round(hasServing ? p.nutriments?.carbohydrates_serving : (p.nutriments?.carbohydrates_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
-          fat: Math.round(hasServing ? p.nutriments?.fat_serving : (p.nutriments?.fat_100g * (parseFloat(p.serving_quantity) || 30) / 100)),
-          serving: p.serving_size || '1 serving',
-        };
-        setSearchResults([food]);
-      } else {
-        setSearchResults([]);
-        setSearchQuery(data);
-        await searchFood(data);
+      try {
+        const food = await lookupBarcodeProduct(data);
+        if (food) {
+          setScanDialogFood(food);
+        } else {
+          setScanDialogError('No product found for this barcode. Try Scan another or use Search.');
+        }
+      } catch {
+        setScanDialogError('Could not reach the food database. Check your connection.');
       }
-    } catch {
-      setSearchResults([]);
+    } finally {
+      setScanDialogLoading(false);
+      scanBusyRef.current = false;
     }
-    setSearching(false);
+  }
+
+  async function captureMealPhoto() {
+    if (!isPremium) {
+      Alert.alert(
+        'IronLore+',
+        'Meal photo AI estimates are part of IronLore+. Barcode scan and manual entry stay free.',
+        purchasesConfigured
+          ? [
+              { text: 'OK' },
+              { text: 'Subscribe', onPress: () => void purchaseDefault() },
+            ]
+          : [{ text: 'OK' }],
+      );
+      return;
+    }
+    if (scanMode !== 'photo' || !cameraRef.current || !cameraReady || scanBusyRef.current || photoCaptureBusy) return;
+    scanBusyRef.current = true;
+    setPhotoCaptureBusy(true);
+    setScanDialogVisible(true);
+    setScanDialogLoading(true);
+    setScanDialogFood(null);
+    setScanDialogPhotoItems(null);
+    setScanDialogAssumptions(null);
+    setScanDialogError(null);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: true,
+        quality: 0.45,
+      });
+      if (!photo?.base64) {
+        setScanDialogError('Could not read the photo. Try again.');
+        return;
+      }
+      const { assumptions, items } = await analyzeMealPhoto({
+        imageBase64: photo.base64,
+        mimeType: 'image/jpeg',
+      });
+      setScanDialogAssumptions(assumptions);
+      setScanDialogPhotoItems(
+        items.map((it, i) => ({
+          id: `photo_${Date.now()}_${i}`,
+          name: it.name,
+          calories: it.calories,
+          protein: it.protein,
+          carbs: it.carbs,
+          fat: it.fat,
+          serving: it.serving || 'AI estimate — edit in log if needed',
+          qty: typeof it.qty === 'number' && it.qty > 0 ? it.qty : 1,
+        })),
+      );
+    } catch (e) {
+      if (e instanceof MealVisionError) {
+        setScanDialogError(
+          e.code === 'unauthenticated'
+            ? 'Sign in to use meal photo. Barcode scan still works offline from Open Food Facts when online.'
+            : e.message,
+        );
+      } else {
+        setScanDialogError('Could not analyze this photo. Try again or use barcode search.');
+      }
+    } finally {
+      setScanDialogLoading(false);
+      scanBusyRef.current = false;
+      setPhotoCaptureBusy(false);
+    }
   }
 
   async function openScanner() {
@@ -153,11 +261,15 @@ export function NutritionScreen(props: {
       const { granted } = await requestCameraPermission();
       if (!granted) { setCameraPermissionSheet(true); return; }
     }
+    closeScanDialog();
+    lastBarcodeRef.current = { code: '', t: 0 };
+    setCameraReady(false);
     setNutView('scan');
   }
 
-  function addFood(food: any) {
-    const updated: LoggedFoodItem[] = [...logged, { ...food, meal: activeMeal, qty: 1 }];
+  function commitFoodToLog(food: any) {
+    const qty = typeof food.qty === 'number' && food.qty > 0 ? food.qty : 1;
+    const updated: LoggedFoodItem[] = [...logged, { ...food, meal: activeMeal, qty }];
     setLogged(updated);
     const nextTotals = updated.reduce((acc, item) => ({
       calories: acc.calories + item.calories * item.qty,
@@ -168,10 +280,63 @@ export function NutritionScreen(props: {
     onProteinUpdate?.(nextTotals.protein);
     onTotalsUpdate?.(nextTotals);
     persistLogged(updated).catch(() => {});
+  }
+
+  function addFood(food: any) {
+    commitFoodToLog(food);
     setNutView('log');
     setSearchQuery('');
     setSearchResults([]);
     Keyboard.dismiss();
+  }
+
+  function confirmScanAdd() {
+    if (!scanDialogFood) return;
+    commitFoodToLog(scanDialogFood);
+    closeScanDialog();
+    if (!multiScan) {
+      setNutView('log');
+      setSearchQuery('');
+      setSearchResults([]);
+      Keyboard.dismiss();
+    }
+  }
+
+  function confirmPhotoAdd() {
+    const items = scanDialogPhotoItems;
+    if (!items?.length) return;
+    const newRows: LoggedFoodItem[] = items.map((f) => ({
+      id: f.id || `photo_${Date.now()}_${Math.random()}`,
+      name: f.name,
+      calories: f.calories,
+      protein: f.protein,
+      carbs: f.carbs,
+      fat: f.fat,
+      serving: f.serving,
+      meal: activeMeal,
+      qty: typeof f.qty === 'number' && f.qty > 0 ? f.qty : 1,
+    }));
+    const updated = [...logged, ...newRows];
+    setLogged(updated);
+    const nextTotals = updated.reduce(
+      (acc, item) => ({
+        calories: acc.calories + item.calories * item.qty,
+        protein: acc.protein + item.protein * item.qty,
+        carbs: acc.carbs + item.carbs * item.qty,
+        fat: acc.fat + item.fat * item.qty,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    );
+    onProteinUpdate?.(nextTotals.protein);
+    onTotalsUpdate?.(nextTotals);
+    persistLogged(updated).catch(() => {});
+    closeScanDialog();
+    if (!multiScan) {
+      setNutView('log');
+      setSearchQuery('');
+      setSearchResults([]);
+      Keyboard.dismiss();
+    }
   }
 
   function removeFood(idx: number) {
@@ -204,7 +369,7 @@ export function NutritionScreen(props: {
           <View style={perm.sheet}>
             <Text style={perm.title}>CAMERA REQUIRED</Text>
             <Text style={perm.body}>
-              To scan barcodes, IronLore needs access to your camera. You can still log food manually if you prefer.
+              IronLore uses your camera to scan food barcodes and to take meal photos for AI macro estimates. You can still log food manually if you prefer.
             </Text>
             <View style={perm.row}>
               <TouchableOpacity style={perm.secondaryBtn} onPress={() => { setCameraPermissionSheet(false); }}>
@@ -230,6 +395,96 @@ export function NutritionScreen(props: {
             >
               <Text style={perm.tryAgainText}>Try again</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={scanDialogVisible} transparent animationType="fade" onRequestClose={closeScanDialog}>
+        <View style={scanModal.overlay}>
+          <View style={scanModal.sheet}>
+            <Text style={scanModal.title}>
+              {scanDialogPhotoItems?.length ? 'Meal estimate' : scanDialogFood ? 'Scanned item' : 'Food scan'}
+            </Text>
+            {scanDialogLoading && (
+              <View style={{ paddingVertical: 24, alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator color="#c9a84c" />
+                <Text style={scanModal.muted}>
+                  {scanMode === 'photo' ? 'Analyzing photo…' : 'Looking up barcode…'}
+                </Text>
+              </View>
+            )}
+            {!scanDialogLoading && scanDialogError && (
+              <View style={{ gap: 14 }}>
+                <Text style={scanModal.body}>{scanDialogError}</Text>
+                <TouchableOpacity style={scanModal.primary} onPress={closeScanDialog}>
+                  <Text style={scanModal.primaryText}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {!scanDialogLoading && scanDialogPhotoItems && scanDialogPhotoItems.length > 0 && (
+              <View style={{ gap: 12, maxHeight: 320 }}>
+                {scanDialogAssumptions ? (
+                  <Text style={[scanModal.muted, { textAlign: 'left', marginBottom: 4 }]}>{scanDialogAssumptions}</Text>
+                ) : null}
+                <Text style={[scanModal.disclaimer, { marginBottom: 6 }]}>
+                  AI estimate only — portions may be off. You can remove or edit items after logging.
+                </Text>
+                <ScrollView style={{ flexGrow: 0 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {scanDialogPhotoItems.map((it, idx) => (
+                    <View key={it.id || idx} style={scanModal.photoItemRow}>
+                      <Text style={scanModal.photoItemName} numberOfLines={2}>{it.name}</Text>
+                      <Text style={scanModal.photoItemMacros}>
+                        {it.calories} kcal · {it.protein}g P · {it.carbs}g C · {it.fat}g F
+                        {it.qty && it.qty !== 1 ? ` · ×${it.qty}` : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={scanModal.primary} onPress={confirmPhotoAdd}>
+                  <Text style={scanModal.primaryText}>Add all to {activeMeal}</Text>
+                </TouchableOpacity>
+                {multiScan && (
+                  <TouchableOpacity
+                    style={scanModal.secondary}
+                    onPress={() => {
+                      closeScanDialog();
+                      lastBarcodeRef.current = { code: '', t: 0 };
+                    }}
+                  >
+                    <Text style={scanModal.secondaryText}>{scanMode === 'photo' ? 'Photo another' : 'Scan another'}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={scanModal.tertiary} onPress={closeScanDialog}>
+                  <Text style={scanModal.tertiaryText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {!scanDialogLoading && scanDialogFood && !scanDialogPhotoItems && (
+              <View style={{ gap: 12 }}>
+                <Text style={scanModal.foodName} numberOfLines={3}>{scanDialogFood.name}</Text>
+                <Text style={scanModal.macros}>
+                  {scanDialogFood.calories} kcal · {scanDialogFood.protein}g P · {scanDialogFood.carbs}g C · {scanDialogFood.fat}g F
+                </Text>
+                <Text style={scanModal.muted}>{scanDialogFood.serving}</Text>
+                <TouchableOpacity style={scanModal.primary} onPress={confirmScanAdd}>
+                  <Text style={scanModal.primaryText}>Add to {activeMeal}</Text>
+                </TouchableOpacity>
+                {multiScan && (
+                  <TouchableOpacity
+                    style={scanModal.secondary}
+                    onPress={() => {
+                      closeScanDialog();
+                      lastBarcodeRef.current = { code: '', t: 0 };
+                    }}
+                  >
+                    <Text style={scanModal.secondaryText}>Scan another</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={scanModal.tertiary} onPress={closeScanDialog}>
+                  <Text style={scanModal.tertiaryText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -321,13 +576,100 @@ export function NutritionScreen(props: {
         </ScrollView>
       ) : nutView === 'scan' ? (
         <View style={{ flex: 1 }}>
-          <CameraView style={{ flex: 1 }} facing="back" onBarcodeScanned={handleBarcodeScan}>
+          <View style={scanModal.scanToolbar}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={[scanModal.modeChip, scanMode === 'barcode' && scanModal.modeChipActive]}
+                  onPress={() => { setScanMode('barcode'); setCameraReady(false); }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[scanModal.modeChipText, scanMode === 'barcode' && scanModal.modeChipTextActive]}>Barcode</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[scanModal.modeChip, scanMode === 'photo' && scanModal.modeChipActive]}
+                  onPress={() => {
+                    if (!isPremium) {
+                      Alert.alert(
+                        'IronLore+',
+                        'Meal photo AI estimates are part of IronLore+. Barcode and manual entry stay free.',
+                        purchasesConfigured
+                          ? [
+                              { text: 'OK' },
+                              { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                            ]
+                          : [{ text: 'OK' }],
+                      );
+                      return;
+                    }
+                    setScanMode('photo');
+                    setCameraReady(false);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[scanModal.modeChipText, scanMode === 'photo' && scanModal.modeChipTextActive]}>Photo meal</Text>
+                </TouchableOpacity>
+              </View>
+              {scanMode === 'barcode' && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={scanModal.toolbarLabel}>Multi-scan</Text>
+                  <Switch
+                    value={multiScan}
+                    onValueChange={setMultiScan}
+                    trackColor={{ false: '#2a2a3a', true: 'rgba(201,168,76,0.45)' }}
+                    thumbColor={multiScan ? '#c9a84c' : '#666'}
+                  />
+                </View>
+              )}
+            </View>
+            {scanMode === 'photo' && (
+              <Text style={{ fontSize: 10, color: IronLore.colors.muted, marginTop: 6 }}>
+                AI estimates macros from the photo — not medical advice. Requires sign-in for analysis.
+              </Text>
+            )}
+          </View>
+          <CameraView
+            ref={cameraRef}
+            style={{ flex: 1 }}
+            facing="back"
+            onCameraReady={() => setCameraReady(true)}
+            onBarcodeScanned={scanMode === 'barcode' ? handleBarcodeScan : undefined}
+          >
             <View style={{ flex: 1, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center' }}>
-              <View style={{ width: 260, height: 160, borderWidth: 2, borderColor: '#c9a84c', borderRadius: 12, backgroundColor: 'transparent' }} />
-              <Text style={{ color: '#c9a84c', marginTop: 16, fontSize: 13, fontWeight: '600' }}>Point at a barcode</Text>
+              <View
+                style={
+                  scanMode === 'photo'
+                    ? { width: 280, height: 280, borderWidth: 2, borderColor: '#c9a84c', borderRadius: 16, backgroundColor: 'transparent' }
+                    : { width: 260, height: 160, borderWidth: 2, borderColor: '#c9a84c', borderRadius: 12, backgroundColor: 'transparent' }
+                }
+              />
+              <Text style={{ color: '#c9a84c', marginTop: 16, fontSize: 13, fontWeight: '600', textAlign: 'center', paddingHorizontal: 20 }}>
+                {scanMode === 'barcode' ? 'Point at a barcode' : 'Frame your meal, then tap Capture'}
+              </Text>
+              {scanMode === 'barcode' && !multiScan && (
+                <Text style={{ color: '#666', marginTop: 8, fontSize: 11, paddingHorizontal: 24, textAlign: 'center' }}>
+                  Single-scan: after you add, you return to the log.
+                </Text>
+              )}
+              {scanMode === 'photo' && (
+                <TouchableOpacity
+                  style={[scanModal.shutterBtn, (!cameraReady || photoCaptureBusy) && { opacity: 0.5 }]}
+                  onPress={captureMealPhoto}
+                  disabled={!cameraReady || photoCaptureBusy}
+                  activeOpacity={0.9}
+                >
+                  <Text style={scanModal.shutterBtnText}>Capture</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </CameraView>
-          <TouchableOpacity style={{ padding: 20, backgroundColor: '#0a0a0f', alignItems: 'center' }} onPress={() => setNutView('search')}>
+          <TouchableOpacity
+            style={{ padding: 20, backgroundColor: '#0a0a0f', alignItems: 'center' }}
+            onPress={() => {
+              closeScanDialog();
+              setNutView('search');
+            }}
+          >
             <Text style={{ color: '#888899', fontSize: 14 }}>Cancel</Text>
           </TouchableOpacity>
         </View>
@@ -395,6 +737,68 @@ export function NutritionScreen(props: {
     </View>
   );
 }
+
+const scanModal = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  sheet: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: IronLore.colors.panel2,
+    borderWidth: 1,
+    borderColor: IronLore.colors.border,
+    borderRadius: IronLore.radii.xl,
+    padding: IronLore.spacing.lg,
+  },
+  title: { ...IronLore.type.section, color: IronLore.colors.gold, textAlign: 'center', marginBottom: 8 },
+  foodName: { fontSize: 16, fontWeight: '800', color: IronLore.colors.text, textAlign: 'center' },
+  macros: { fontSize: 13, color: IronLore.colors.muted, textAlign: 'center' },
+  muted: { fontSize: 12, color: IronLore.colors.muted, textAlign: 'center' },
+  body: { fontSize: 13, color: IronLore.colors.text, textAlign: 'center', lineHeight: 20 },
+  primary: { backgroundColor: IronLore.colors.gold, borderRadius: IronLore.radii.md, paddingVertical: 14, alignItems: 'center' },
+  primaryText: { fontSize: 14, fontWeight: '900', color: IronLore.colors.bg },
+  secondary: { backgroundColor: IronLore.colors.panel, borderWidth: 1, borderColor: IronLore.colors.border, borderRadius: IronLore.radii.md, paddingVertical: 14, alignItems: 'center' },
+  secondaryText: { fontSize: 14, fontWeight: '800', color: IronLore.colors.gold },
+  tertiary: { paddingVertical: 10, alignItems: 'center' },
+  tertiaryText: { fontSize: 13, fontWeight: '700', color: IronLore.colors.muted },
+  scanToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#12121a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a3a',
+  },
+  toolbarLabel: { fontSize: 13, fontWeight: '700', color: '#e8e8f0' },
+  modeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: IronLore.colors.panel,
+    borderWidth: 1,
+    borderColor: IronLore.colors.border,
+  },
+  modeChipActive: { borderColor: IronLore.colors.gold, backgroundColor: 'rgba(201,168,76,0.12)' },
+  modeChipText: { fontSize: 12, fontWeight: '800', color: IronLore.colors.muted },
+  modeChipTextActive: { color: IronLore.colors.gold },
+  shutterBtn: {
+    marginTop: 20,
+    backgroundColor: IronLore.colors.gold,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 999,
+  },
+  shutterBtnText: { fontSize: 15, fontWeight: '900', color: IronLore.colors.bg, letterSpacing: 0.5 },
+  disclaimer: { fontSize: 10, color: IronLore.colors.muted, lineHeight: 14 },
+  photoItemRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: IronLore.colors.border,
+  },
+  photoItemName: { fontSize: 14, fontWeight: '700', color: IronLore.colors.text },
+  photoItemMacros: { fontSize: 12, color: IronLore.colors.muted, marginTop: 4 },
+});
 
 const perm = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 20 },

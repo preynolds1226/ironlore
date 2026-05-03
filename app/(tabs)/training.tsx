@@ -26,6 +26,8 @@ import {
   type TemplateSet,
   type WorkoutTemplate,
 } from '@/src/data/trainingTemplates';
+import { usePremium } from '@/src/purchases/PremiumContext';
+import { TrainingPaywall } from '@/src/purchases/TrainingPaywall';
 
 type EditorExercise = {
   key: string;
@@ -60,6 +62,8 @@ function paramOne(v: string | string[] | undefined): string | undefined {
 
 export default function TrainingTab() {
   const params = useLocalSearchParams<{ create?: string | string[]; name?: string | string[] }>();
+  const premium = usePremium();
+  const [paywallBusy, setPaywallBusy] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
 
@@ -121,12 +125,13 @@ export default function TrainingTab() {
   useEffect(() => {
     const create = paramOne(params.create);
     if (create !== '1' || !userId || loadingAuth) return;
+    if (premium.purchasesConfigured && !premium.isPremium) return;
     resetEditor();
     const nameParam = paramOne(params.name);
     if (nameParam?.trim()) setTemplateName(decodeURIComponent(nameParam.trim()));
     setMode('edit');
     router.setParams({ create: undefined, name: undefined });
-  }, [params.create, params.name, userId, loadingAuth]);
+  }, [params.create, params.name, userId, loadingAuth, premium.purchasesConfigured, premium.isPremium]);
 
   function resetEditor() {
     setEditingId(undefined);
@@ -401,6 +406,39 @@ export default function TrainingTab() {
     return 'No templates yet. Create your first one.';
   }, [loadingAuth, userId]);
 
+  if (premium.purchasesConfigured && premium.loading) {
+    return (
+      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar style="light" />
+        <ActivityIndicator color="#c9a84c" size="large" />
+      </View>
+    );
+  }
+
+  if (premium.purchasesConfigured && !premium.isPremium) {
+    return (
+      <TrainingPaywall
+        busy={paywallBusy}
+        onSubscribe={async () => {
+          setPaywallBusy(true);
+          try {
+            await premium.purchaseDefault();
+          } finally {
+            setPaywallBusy(false);
+          }
+        }}
+        onRestore={async () => {
+          setPaywallBusy(true);
+          try {
+            await premium.restore();
+          } finally {
+            setPaywallBusy(false);
+          }
+        }}
+      />
+    );
+  }
+
   if (mode === 'session') {
     return (
       <View style={styles.root}>
@@ -618,12 +656,18 @@ export default function TrainingTab() {
     );
   }
 
-  const createWorkoutHeader = (
-    <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 8 }}>
+  const createWorkoutFooter = (
+    <View style={{ paddingTop: 12, paddingBottom: 8, gap: 8 }}>
       <TouchableOpacity onPress={() => beginCreate()} style={styles.createWorkoutBtn} disabled={!userId} activeOpacity={0.85}>
         <Text style={styles.createWorkoutBtnText}>Create workout</Text>
         <Text style={styles.createWorkoutSub}>Add exercises, name it (Legs, Monday…), save as a template</Text>
       </TouchableOpacity>
+    </View>
+  );
+
+  const routinesListHeader = (
+    <View style={{ paddingTop: 4, paddingBottom: 10 }}>
+      <Text style={styles.label}>Your routines</Text>
     </View>
   );
 
@@ -637,14 +681,13 @@ export default function TrainingTab() {
 
       {loading ? (
         <View style={{ flex: 1 }}>
-          {createWorkoutHeader}
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color="#c9a84c" size="large" />
           </View>
+          <View style={{ paddingHorizontal: 16 }}>{createWorkoutFooter}</View>
         </View>
       ) : templates.length === 0 ? (
         <View style={{ flex: 1 }}>
-          {createWorkoutHeader}
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Text style={{ fontSize: 42, marginBottom: 14 }}>🏋️</Text>
             <Text style={{ fontSize: 16, fontWeight: '800', color: '#e9e9ff', marginBottom: 8 }}>{emptyState}</Text>
@@ -652,12 +695,14 @@ export default function TrainingTab() {
               Tap Create workout to build your plan and reuse it anytime.
             </Text>
           </View>
+          <View style={{ paddingHorizontal: 16 }}>{createWorkoutFooter}</View>
         </View>
       ) : (
         <FlatList
           data={templates}
           keyExtractor={(t) => t.id}
-          ListHeaderComponent={createWorkoutHeader}
+          ListHeaderComponent={routinesListHeader}
+          ListFooterComponent={createWorkoutFooter}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 10 }}
           renderItem={({ item }) => (
             <View style={styles.card}>

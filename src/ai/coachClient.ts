@@ -21,6 +21,7 @@ export type CoachErrorCode =
   | 'rate_limited'
   | 'server'
   | 'bad_request'
+  | 'config'
   | 'unknown';
 
 export class CoachError extends Error {
@@ -69,7 +70,13 @@ export async function callCoachWithProposals(params: CoachCallParams): Promise<{
   text: string;
   proposals: CoachProposal[];
 }> {
-  const { supabaseFunctionsUrl } = getRuntimeConfig();
+  let supabaseFunctionsUrl: string;
+  try {
+    ({ supabaseFunctionsUrl } = getRuntimeConfig());
+  } catch (e: any) {
+    const msg = typeof e?.message === 'string' ? e.message : 'Missing Supabase configuration in app.';
+    throw new CoachError({ code: 'config', message: msg });
+  }
 
   const net = await getNetworkStateOnce().catch(() => null);
   if (net && !isOnlineFromState(net)) {
@@ -106,17 +113,20 @@ export async function callCoachWithProposals(params: CoachCallParams): Promise<{
     const retryAfterSeconds = parseRetryAfterSeconds(res.headers.get('Retry-After'));
 
     if (status === 401 || status === 403) {
-      throw new CoachError({ code: 'unauthenticated', message: 'Unauthorized', status });
+      const body = await res.text().catch(() => '');
+      throw new CoachError({ code: 'unauthenticated', message: body || 'Unauthorized', status });
     }
     if (status === 429) {
-      throw new CoachError({ code: 'rate_limited', message: 'Rate limited', status, retryAfterSeconds });
+      const body = await res.text().catch(() => '');
+      throw new CoachError({ code: 'rate_limited', message: body || 'Rate limited', status, retryAfterSeconds });
     }
     if (status === 400) {
       const body = await res.text().catch(() => '');
       throw new CoachError({ code: 'bad_request', message: body || 'Bad request', status });
     }
     if (status >= 500) {
-      throw new CoachError({ code: 'server', message: 'Server error', status });
+      const body = await res.text().catch(() => '');
+      throw new CoachError({ code: 'server', message: body || 'Server error', status });
     }
 
     const body = await res.text().catch(() => '');
