@@ -1,8 +1,23 @@
 diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
-index 2a67797..ff1eebe 100644
+index 2a67797..b4e20d7 100644
 --- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
 +++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
-@@ -435,7 +435,14 @@ TraceSection s(
+@@ -371,7 +371,13 @@ id convertJSIValueToObjCObject(
+         // See https://github.com/reactwg/react-native-new-architecture/discussions/276#discussioncomment-12567155
+         throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
+       } else {
+-        @throw exception;
++        // iOS 26+: async path runs on TM queue; rethrowing can terminate like void async (IronLore / App Review).
++        NSLog(
++            @"[RCTTurboModule] performMethodInvocation async caught NSException (module=%s method=%s): %@",
++            moduleName,
++            methodNameStr.c_str(),
++            exception);
++        return;
+       }
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+@@ -435,7 +441,14 @@ TraceSection s(
      @try {
        [inv invokeWithTarget:strongModule];
      } @catch (NSException *exception) {

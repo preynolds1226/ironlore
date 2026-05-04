@@ -49,3 +49,6 @@ app-example
 
 # Supabase CLI local cache (linked project metadata)
 supabase/.temp/
+
+# Local Xcode / simulator build outputs (e.g. scripts/ios-simulator-smoke.sh)
+/build
