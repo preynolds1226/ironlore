@@ -27,6 +27,7 @@ import {
   getCoachMessagesUsedToday,
   incrementCoachMessageSuccess,
 } from '@/src/purchases/coachUsage';
+import { useIronLorePlusPaywall } from '@/src/purchases/PaywallModalContext';
 import { usePremium } from '@/src/purchases/PremiumContext';
 import { useIsOnline } from '@/src/system/network';
 
@@ -82,7 +83,8 @@ export function CoachScreen(props: {
   const abortRef = useRef<AbortController | null>(null);
   const isOnline = useIsOnline();
   const insets = useSafeAreaInsets();
-  const { isPremium, purchaseDefault, restore, purchasesConfigured } = usePremium();
+  const { isPremium, restore, purchasesConfigured } = usePremium();
+  const paywallModal = useIronLorePlusPaywall();
   const [coachFreeRemaining, setCoachFreeRemaining] = useState<number | null>(null);
 
   useEffect(() => {
@@ -174,8 +176,10 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
             { text: 'Not now', style: 'cancel' },
             ...(purchasesConfigured
               ? [
+                  ...(Platform.OS !== 'web'
+                    ? [{ text: 'See IronLore+', onPress: () => paywallModal.present() }]
+                    : []),
                   { text: 'Restore', onPress: () => void restore() },
-                  { text: 'Subscribe', onPress: () => void purchaseDefault() },
                 ]
               : []),
           ],
@@ -266,7 +270,9 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
             purchasesConfigured
               ? [
                   { text: 'OK' },
-                  { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                  ...(Platform.OS !== 'web'
+                    ? [{ text: 'See IronLore+', onPress: () => paywallModal.present() }]
+                    : []),
                 ]
               : [{ text: 'OK' }],
           );
@@ -304,7 +310,9 @@ The user's name is ${character?.name || 'Warrior'}. Always stay in character. Ke
             purchasesConfigured
               ? [
                   { text: 'OK' },
-                  { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                  ...(Platform.OS !== 'web'
+                    ? [{ text: 'See IronLore+', onPress: () => paywallModal.present() }]
+                    : []),
                 ]
               : [{ text: 'OK' }],
           );

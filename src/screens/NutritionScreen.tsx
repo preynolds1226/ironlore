@@ -1,11 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ElementRef } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Linking, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { analyzeMealPhoto, MealVisionError } from '@/src/ai/mealVisionClient';
 import { IronLore } from '@/src/ui/ironloreTokens';
 import { loadNutritionDay, saveNutritionDay, type LoggedFoodItem } from '@/src/data/nutritionDayStore';
+import { useIronLorePlusPaywall } from '@/src/purchases/PaywallModalContext';
 import { usePremium } from '@/src/purchases/PremiumContext';
 
 function ManualFoodEntry(props: { onAdd: (food: any) => void; s: any }) {
@@ -81,7 +96,8 @@ export function NutritionScreen(props: {
   const scanBusyRef = useRef(false);
   const cameraRef = useRef<ElementRef<typeof CameraView>>(null);
   const SCAN_DEBOUNCE_MS = 1800;
-  const { isPremium, purchaseDefault, purchasesConfigured } = usePremium();
+  const { isPremium, purchasesConfigured } = usePremium();
+  const paywallModal = useIronLorePlusPaywall();
 
   const totals = logged.reduce((acc, item) => ({
     calories: acc.calories + item.calories * item.qty,
@@ -198,7 +214,9 @@ export function NutritionScreen(props: {
         purchasesConfigured
           ? [
               { text: 'OK' },
-              { text: 'Subscribe', onPress: () => void purchaseDefault() },
+              ...(Platform.OS !== 'web'
+                ? [{ text: 'See IronLore+', onPress: () => paywallModal.present() }]
+                : []),
             ]
           : [{ text: 'OK' }],
       );
@@ -596,7 +614,9 @@ export function NutritionScreen(props: {
                         purchasesConfigured
                           ? [
                               { text: 'OK' },
-                              { text: 'Subscribe', onPress: () => void purchaseDefault() },
+                              ...(Platform.OS !== 'web'
+                                ? [{ text: 'See IronLore+', onPress: () => paywallModal.present() }]
+                                : []),
                             ]
                           : [{ text: 'OK' }],
                       );
