@@ -9,7 +9,10 @@ import Purchases, {
 
 import { getRevenueCatAndroidApiKey, getRevenueCatIosApiKey } from '@/src/config/readExpoExtra';
 import { supabase } from '@/src/data/supabaseClient';
-import { REVENUECAT_ENTITLEMENT_PRO } from '@/src/purchases/constants';
+import {
+  REVENUECAT_ENTITLEMENT_PRO,
+  REVENUECAT_MONTHLY_STORE_PRODUCT_ID_IOS,
+} from '@/src/purchases/constants';
 import { isRevenueCatNativeAvailable } from '@/src/purchases/isRevenueCatNativeAvailable';
 
 type PremiumContextValue = {
@@ -19,7 +22,7 @@ type PremiumContextValue = {
   /** True only after RevenueCat SDK configured successfully with an API key. */
   purchasesConfigured: boolean;
   refresh: () => Promise<void>;
-  /** Purchase preferred monthly package, else first package in current offering. Returns true if now premium. */
+  /** Purchase the monthly package on the current offering (annual is ignored until we ship yearly). Returns true if now premium. */
   purchaseDefault: () => Promise<boolean>;
   restore: () => Promise<boolean>;
 };
@@ -32,11 +35,20 @@ function readPremium(info: CustomerInfo | null | undefined): boolean {
 
 function pickDefaultPackage(packages: PurchasesPackage[]): PurchasesPackage | undefined {
   if (packages.length === 0) return undefined;
+  // Monthly-only for now: never purchase ANNUAL.
   const monthly = packages.find((p) => p.packageType === Purchases.PACKAGE_TYPE.MONTHLY);
   if (monthly) return monthly;
-  const annual = packages.find((p) => p.packageType === Purchases.PACKAGE_TYPE.ANNUAL);
-  if (annual) return annual;
-  return packages[0];
+  // RevenueCat sometimes surfaces subscriptions as CUSTOM/Lifetime-ish metadata — pin monthly by Store product id.
+  if (Platform.OS === 'ios') {
+    const byStoreId = packages.find(
+      (p) =>
+        p.product.identifier === REVENUECAT_MONTHLY_STORE_PRODUCT_ID_IOS &&
+        p.packageType !== Purchases.PACKAGE_TYPE.ANNUAL,
+    );
+    if (byStoreId) return byStoreId;
+  }
+  const nonAnnual = packages.filter((p) => p.packageType !== Purchases.PACKAGE_TYPE.ANNUAL);
+  return nonAnnual.length === 1 ? nonAnnual[0] : undefined;
 }
 
 function isUserCancelledPurchase(e: unknown): boolean {
@@ -109,7 +121,10 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         listenerAdded = true;
         setPurchasesConfigured(true);
         setIsPremium(readPremium(info));
-      } catch {
+      } catch (e) {
+        if (__DEV__) {
+          console.warn('[IronLore] RevenueCat configure failed:', e);
+        }
         if (!cancelled) {
           setPurchasesConfigured(false);
           setIsPremium(true);
@@ -168,11 +183,20 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     try {
       const offerings = await Purchases.getOfferings();
       const pkgs = offerings.current?.availablePackages ?? [];
+      if (pkgs.length === 0) {
+        Alert.alert(
+          'No subscription packages',
+          offerings.current
+            ? 'The current RevenueCat offering has no packages. Open RevenueCat → Offerings → your current offering → add a package for product a1 (monthly).'
+            : 'No “current” offering in RevenueCat. Create an offering, set it as Current, then add packages linked to App Store products a1 / a2.',
+        );
+        return false;
+      }
       const pkg = pickDefaultPackage(pkgs);
       if (!pkg) {
         Alert.alert(
-          'No subscription product',
-          'In RevenueCat, set a current offering with packages, and match products in App Store Connect.',
+          'No monthly subscription',
+          'Include product a1 on the current RevenueCat offering (as the monthly subscription). If a1 is already there, confirm App Store Connect subscription duration is 1 month so RevenueCat can tag it as monthly.',
         );
         return false;
       }

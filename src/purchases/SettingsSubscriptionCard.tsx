@@ -37,8 +37,15 @@ export function SettingsSubscriptionCard() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>IronLore+</Text>
         <Text style={styles.muted}>
-          Set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in .env (public SDK key from RevenueCat), restart Metro with --clear, then rebuild: npx expo run:ios or eas build.
+          Add your public iOS SDK key from RevenueCat (appl_… or test_…): set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in .env
+          and/or app.json extra.revenueCatIosApiKey. Restart Metro with --clear, then rebuild (npx expo run:ios or eas build).
+          Match products and a current Offering in RevenueCat to your App Store Connect subscription IDs.
         </Text>
+        {__DEV__ ? (
+          <Text style={[styles.muted, { marginTop: 8 }]}>
+            Development: use Subscription diagnostics below — Metro also logs configure errors.
+          </Text>
+        ) : null}
       </View>
     );
   }

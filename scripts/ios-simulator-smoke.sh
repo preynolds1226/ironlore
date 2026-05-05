@@ -60,13 +60,19 @@ for udid in "${DEVICES[@]}"; do
   xcrun simctl install "$udid" "$APP"
   # Terminate any previous instance
   xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
-  xcrun simctl launch "$udid" "$BUNDLE_ID" >/dev/null
-  sleep "$LAUNCH_WAIT_SEC"
-  if xcrun simctl spawn "$udid" ps -A 2>/dev/null | grep -q "[I]ronLore"; then
-    echo "OK: IronLore process still running after ${LAUNCH_WAIT_SEC}s"
+  # `simctl launch` prints "bundleId: pid" on success. iOS 26+ simulators often have no `ps` for
+  # `simctl spawn`, so we rely on launch + crash signals in logs instead of process lists.
+  set +e
+  launch_out="$(xcrun simctl launch "$udid" "$BUNDLE_ID" 2>&1)"
+  launch_xc=$?
+  set -e
+  if [[ "$launch_xc" -eq 0 ]] && echo "$launch_out" | grep -qE '^[^:]+:[[:space:]]+[0-9]+$'; then
+    echo "OK: cold launch OK ($launch_out)"
   else
-    echo "WARN: IronLore not seen in ps — may have crashed; check logs below."
+    echo "FAIL: launch failed (exit $launch_xc) or unexpected output: ${launch_out:-empty}"
+    failures=$((failures + 1))
   fi
+  sleep "$LAUNCH_WAIT_SEC"
   if xcrun simctl spawn "$udid" log show --last 30s --style compact 2>/dev/null | grep -q "SIGABRT"; then
     echo "FAIL: SIGABRT in recent logs for $udid"
     failures=$((failures + 1))

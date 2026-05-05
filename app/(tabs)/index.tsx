@@ -20,6 +20,7 @@ import { AppleHealthHomeRow } from '@/src/components/AppleHealthHomeRow';
 import { CoachScreen } from '@/src/screens/CoachScreen';
 import { NutritionScreen as NutritionScreenComponent } from '@/src/screens/NutritionScreen';
 import { SettingsSubscriptionCard } from '@/src/purchases/SettingsSubscriptionCard';
+import { SubscriptionDebugPanel } from '@/src/purchases/SubscriptionDebugPanel';
 import { isRevenueCatNativeAvailable } from '@/src/purchases/isRevenueCatNativeAvailable';
 
 Notifications.setNotificationHandler({
@@ -310,6 +311,7 @@ function SettingsScreen({ onBack, userId, character, cleanMode, onCleanModeToggl
         <Text style={[s.sectionTitle, { marginBottom: 10 }]}>IRONLORE+</Text>
         <View style={{ marginBottom: 20 }}>
           <SettingsSubscriptionCard />
+          <SubscriptionDebugPanel />
         </View>
 
         <Text style={[s.sectionTitle, { marginBottom: 10 }]}>ACCOUNT</Text>
