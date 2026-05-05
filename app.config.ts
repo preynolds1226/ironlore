@@ -22,6 +22,16 @@ export default (): ExpoConfig => {
   const plugins = [
     ...(base.plugins ?? []),
     [
+      'expo-build-properties',
+      {
+        ios: {
+          // Work around iOS 26 launch crash in RN New Architecture TurboModule queue.
+          // Expo SDK 54 still supports legacy architecture; SDK 55+ does not.
+          newArchEnabled: false,
+        },
+      },
+    ],
+    [
       'apple-health',
       {
         healthSharePermission:
