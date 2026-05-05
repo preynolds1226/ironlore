@@ -25,9 +25,10 @@ export default (): ExpoConfig => {
       'expo-build-properties',
       {
         ios: {
-          // Work around iOS 26 launch crash in RN New Architecture TurboModule queue.
-          // Expo SDK 54 still supports legacy architecture; SDK 55+ does not.
-          newArchEnabled: false,
+          // We keep New Architecture enabled (Expo SDK 54 defaults) but force building RN from source
+          // so our `patch-package` fix to `RCTTurboModule.mm` is actually compiled into the binary.
+          // Otherwise, precompiled React Native xcframeworks can bypass the patched sources.
+          buildReactNativeFromSource: true,
         },
       },
     ],
