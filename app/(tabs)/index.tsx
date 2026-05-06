@@ -3474,11 +3474,18 @@ export default function HomeScreen() {
   const shareCaptureRef = useRef<any>(null);
 
   useEffect(() => {
+    // Safety timeout: if getSession hangs (slow/no network on first launch),
+    // unblock the UI after 5s so the app never appears frozen on the splash screen.
+    const authTimeout = setTimeout(() => setAuthChecked(true), 5000);
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(authTimeout);
       if (session?.user) {
         setUserId(session.user.id);
         loadProfile(session.user.id);
       }
+      setAuthChecked(true);
+    }).catch(() => {
+      clearTimeout(authTimeout);
       setAuthChecked(true);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -3491,7 +3498,10 @@ export default function HomeScreen() {
         setCharacter(null);
       }
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(authTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
