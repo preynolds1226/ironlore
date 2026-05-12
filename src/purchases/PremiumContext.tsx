@@ -115,7 +115,15 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       try {
         Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN);
         Purchases.configure({ apiKey });
-        const info = await Purchases.getCustomerInfo();
+        // 8-second timeout: on Apple's review network or with a Turbo Module hang,
+        // getCustomerInfo() can await forever. Racing against a deadline ensures
+        // loading is cleared and the app stays usable even if RevenueCat hangs.
+        const info = await Promise.race([
+          Purchases.getCustomerInfo(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('RevenueCat getCustomerInfo timeout')), 8000),
+          ),
+        ]);
         if (cancelled) return;
         Purchases.addCustomerInfoUpdateListener(onCustomerInfo);
         listenerAdded = true;
