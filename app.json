@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ironlore.app",
-      "buildNumber": "11",
+      "buildNumber": "15",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "IronLore uses your camera to scan food barcodes and to take meal photos for estimated nutrition logging."

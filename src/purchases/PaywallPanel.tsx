@@ -1,21 +1,24 @@
 import * as Haptics from 'expo-haptics';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { IronLore } from '@/src/ui/ironloreTokens';
 
 const PRESS_SCALE = 0.97;
+const PRIVACY_POLICY_URL = 'https://github.com/preynolds1226/ironlore/blob/main/PRIVACY_POLICY.md';
 
 export type PaywallPanelProps = {
   busy: boolean;
   onSubscribe: () => void;
   onRestore: () => void;
+  /** Localized price string from RevenueCat (e.g. "$4.99"). Shown above Subscribe button. */
+  priceString?: string | null;
 };
 
 function onPressInHaptic() {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 }
 
-export function PaywallPanel({ busy, onSubscribe, onRestore }: PaywallPanelProps) {
+export function PaywallPanel({ busy, onSubscribe, onRestore, priceString }: PaywallPanelProps) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>IronLore+</Text>
@@ -29,6 +32,9 @@ export function PaywallPanel({ busy, onSubscribe, onRestore }: PaywallPanelProps
           </Text>
         ))}
       </View>
+      {priceString ? (
+        <Text style={styles.price}>{priceString} / month</Text>
+      ) : null}
       <Pressable
         disabled={busy}
         onPress={onSubscribe}
@@ -62,8 +68,15 @@ export function PaywallPanel({ busy, onSubscribe, onRestore }: PaywallPanelProps
         <Text style={styles.secondaryText}>Restore purchases</Text>
       </Pressable>
       <Text style={styles.note}>
-        Payment is charged to your Apple ID. Manage or cancel in Settings ▸ Apple ID ▸ Subscriptions. Free tier still includes home workouts, barcode nutrition, and limited coach messages per day.
+        Payment is charged to your Apple ID. Auto-renews monthly. Manage or cancel in Settings ▸ Apple ID ▸ Subscriptions. Free tier still includes home workouts, barcode nutrition, and limited coach messages per day.
       </Text>
+      <TouchableOpacity
+        onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
+        hitSlop={8}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.privacyLink}>Privacy Policy</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -98,4 +111,6 @@ const styles = StyleSheet.create({
   },
   secondaryText: { fontSize: 14, fontWeight: '800', color: IronLore.colors.gold },
   note: { fontSize: 11, color: IronLore.colors.muted, marginTop: 24, lineHeight: 16 },
+  price: { fontSize: 20, fontWeight: '900', color: IronLore.colors.gold, textAlign: 'center', marginBottom: 14 },
+  privacyLink: { fontSize: 11, color: IronLore.colors.muted, textDecorationLine: 'underline', marginTop: 10, textAlign: 'center' },
 });

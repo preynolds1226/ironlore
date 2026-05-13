@@ -21,6 +21,8 @@ type PremiumContextValue = {
   loading: boolean;
   /** True only after RevenueCat SDK configured successfully with an API key. */
   purchasesConfigured: boolean;
+  /** Localized price string for the monthly subscription (e.g. "$4.99"), null until offerings load. */
+  monthlyPriceString: string | null;
   refresh: () => Promise<void>;
   /** Purchase the monthly package on the current offering (annual is ignored until we ship yearly). Returns true if now premium. */
   purchaseDefault: () => Promise<boolean>;
@@ -61,6 +63,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   const [isPremium, setIsPremium] = useState(true);
   const [loading, setLoading] = useState(true);
   const [purchasesConfigured, setPurchasesConfigured] = useState(false);
+  const [monthlyPriceString, setMonthlyPriceString] = useState<string | null>(null);
 
   const apiKey = useMemo(() => {
     if (Platform.OS === 'ios') return getRevenueCatIosApiKey();
@@ -129,6 +132,17 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         listenerAdded = true;
         setPurchasesConfigured(true);
         setIsPremium(readPremium(info));
+        // Fetch localized price for display in paywall UI (best-effort, non-blocking).
+        try {
+          const offerings = await Purchases.getOfferings();
+          const pkgs = offerings.current?.availablePackages ?? [];
+          const pkg = pickDefaultPackage(pkgs);
+          if (!cancelled && pkg) {
+            setMonthlyPriceString(pkg.product.priceString);
+          }
+        } catch {
+          // price stays null — paywall renders without it
+        }
       } catch (e) {
         if (__DEV__) {
           console.warn('[IronLore] RevenueCat configure failed:', e);
@@ -242,11 +256,12 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       isPremium,
       loading,
       purchasesConfigured,
+      monthlyPriceString,
       refresh,
       purchaseDefault,
       restore,
     }),
-    [isPremium, loading, purchasesConfigured, refresh, purchaseDefault, restore],
+    [isPremium, loading, purchasesConfigured, monthlyPriceString, refresh, purchaseDefault, restore],
   );
 
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;

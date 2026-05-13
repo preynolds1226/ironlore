@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { usePremium } from '@/src/purchases/PremiumContext';
 import { isRevenueCatNativeAvailable } from '@/src/purchases/isRevenueCatNativeAvailable';
 import { IronLore } from '@/src/ui/ironloreTokens';
 
+const PRIVACY_POLICY_URL = 'https://github.com/preynolds1226/ironlore/blob/main/PRIVACY_POLICY.md';
+
 /**
  * Profile → Settings: subscribe / restore and status (native). Web = informational only.
  */
 export function SettingsSubscriptionCard() {
-  const { isPremium, loading, purchasesConfigured, purchaseDefault, restore, refresh } = usePremium();
+  const { isPremium, loading, purchasesConfigured, monthlyPriceString, purchaseDefault, restore, refresh } = usePremium();
   const [busy, setBusy] = useState(false);
 
   if (Platform.OS === 'web') {
@@ -62,26 +64,31 @@ export function SettingsSubscriptionCard() {
       </Text>
       <View style={{ gap: 10, marginTop: 12 }}>
         {!isPremium && (
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            disabled={busy || loading}
-            activeOpacity={0.85}
-            onPress={async () => {
-              setBusy(true);
-              try {
-                await purchaseDefault();
-                await refresh();
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? (
-              <ActivityIndicator color={IronLore.colors.bg} />
-            ) : (
-              <Text style={styles.primaryText}>Subscribe</Text>
-            )}
-          </TouchableOpacity>
+          <>
+            {monthlyPriceString ? (
+              <Text style={styles.price}>{monthlyPriceString} / month</Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              disabled={busy || loading}
+              activeOpacity={0.85}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await purchaseDefault();
+                  await refresh();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? (
+                <ActivityIndicator color={IronLore.colors.bg} />
+              ) : (
+                <Text style={styles.primaryText}>Subscribe</Text>
+              )}
+            </TouchableOpacity>
+          </>
         )}
         <TouchableOpacity
           style={styles.secondaryBtn}
@@ -100,6 +107,14 @@ export function SettingsSubscriptionCard() {
           <Text style={styles.secondaryText}>Restore purchases</Text>
         </TouchableOpacity>
       </View>
+      <TouchableOpacity
+        onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
+        hitSlop={8}
+        activeOpacity={0.7}
+        style={{ marginTop: 10 }}
+      >
+        <Text style={styles.privacyLink}>Privacy Policy</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -124,4 +139,6 @@ const styles = StyleSheet.create({
   primaryText: { fontSize: 15, fontWeight: '900', color: IronLore.colors.bg },
   secondaryBtn: { paddingVertical: 12, alignItems: 'center' },
   secondaryText: { fontSize: 14, fontWeight: '800', color: IronLore.colors.gold },
+  price: { fontSize: 16, fontWeight: '900', color: IronLore.colors.gold, textAlign: 'center' },
+  privacyLink: { fontSize: 11, color: IronLore.colors.muted, textDecorationLine: 'underline', textAlign: 'center' },
 });

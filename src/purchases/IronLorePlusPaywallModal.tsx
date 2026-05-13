@@ -22,7 +22,7 @@ type Props = {
 };
 
 export function IronLorePlusPaywallModal({ visible, onDismiss }: Props) {
-  const { purchaseDefault, restore, refresh, isPremium, purchasesConfigured } = usePremium();
+  const { purchaseDefault, restore, refresh, isPremium, purchasesConfigured, monthlyPriceString } = usePremium();
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export function IronLorePlusPaywallModal({ visible, onDismiss }: Props) {
                   </Pressable>
                 </View>
               ) : (
-                <PaywallPanel busy={busy} onSubscribe={handleSubscribe} onRestore={handleRestore} />
+                <PaywallPanel busy={busy} onSubscribe={handleSubscribe} onRestore={handleRestore} priceString={monthlyPriceString} />
               )}
             </View>
           </ScrollView>
