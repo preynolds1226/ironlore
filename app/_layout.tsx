@@ -32,8 +32,13 @@ class ErrorBoundary extends React.Component<
   override render() {
     if (this.state.hasError) {
       return (
-        <View style={{ flex: 1, backgroundColor: '#0a0a0f', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#888', fontSize: 14 }}>Something went wrong. Restart the app.</Text>
+        <View style={{ flex: 1, backgroundColor: '#1a0a0a', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Text style={{ color: '#ff6b6b', fontSize: 20, fontWeight: '800', marginBottom: 12, textAlign: 'center' }}>
+            IronLore failed to start
+          </Text>
+          <Text style={{ color: '#ffffff', fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
+            Force-quit the app and reopen it. If this keeps happening, delete and reinstall.
+          </Text>
         </View>
       );
     }
