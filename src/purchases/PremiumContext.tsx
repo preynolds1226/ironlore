@@ -29,7 +29,18 @@ type PremiumContextValue = {
   restore: () => Promise<boolean>;
 };
 
-const PremiumContext = createContext<PremiumContextValue | null>(null);
+export const PremiumContext = createContext<PremiumContextValue | null>(null);
+
+/** Safe defaults before RevenueCat native module loads (LazyPremiumProvider). */
+export const premiumStubValue: PremiumContextValue = {
+  isPremium: true,
+  loading: false,
+  purchasesConfigured: false,
+  monthlyPriceString: null,
+  refresh: async () => {},
+  purchaseDefault: async () => false,
+  restore: async () => false,
+};
 
 function readPremium(info: CustomerInfo | null | undefined): boolean {
   return !!info?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_PRO];

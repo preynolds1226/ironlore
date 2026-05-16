@@ -25,9 +25,9 @@ export default (): ExpoConfig => {
       'expo-build-properties',
       {
         ios: {
-          // We keep New Architecture enabled (Expo SDK 54 defaults) but force building RN from source
-          // so our `patch-package` fix to `RCTTurboModule.mm` is actually compiled into the binary.
-          // Otherwise, precompiled React Native xcframeworks can bypass the patched sources.
+          // Disable New Arch on iOS 26 TestFlight: Turbo Module exception swallowing can leave an empty
+          // black window. Still build from source so patch-package RCTTurboModule fix applies if re-enabled.
+          newArchEnabled: false,
           buildReactNativeFromSource: true,
         },
       },

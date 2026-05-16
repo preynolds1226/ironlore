@@ -26,6 +26,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
+          href: null,
           title: 'Explore',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
         }}
@@ -33,6 +34,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="training"
         options={{
+          href: null,
           title: 'Training',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="figure.strengthtraining.traditional" color={color} />,
         }}

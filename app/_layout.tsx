@@ -5,8 +5,8 @@ import React, { useEffect, useLayoutEffect } from 'react';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { LazyPremiumProvider } from '@/src/purchases/LazyPremiumProvider';
 import { PaywallModalProvider } from '@/src/purchases/PaywallModalContext';
-import { PremiumProvider } from '@/src/purchases/PremiumContext';
 
 // Last resort: splash auto-hide never ran (bundler / native edge case).
 if (typeof SplashScreen.hideAsync === 'function') {
@@ -78,7 +78,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0a0a0f' }}>
       <ErrorBoundary>
-        <PremiumProvider>
+        <LazyPremiumProvider>
           <PaywallModalProvider>
             <Stack
               screenOptions={{
@@ -89,7 +89,7 @@ export default function RootLayout() {
               <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
             </Stack>
           </PaywallModalProvider>
-        </PremiumProvider>
+        </LazyPremiumProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
   );
