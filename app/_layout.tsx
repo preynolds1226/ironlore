@@ -1,19 +1,20 @@
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
-import React, { useEffect, useLayoutEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LazyPremiumProvider } from '@/src/purchases/LazyPremiumProvider';
 import { PaywallModalProvider } from '@/src/purchases/PaywallModalContext';
 
-// Last resort: splash auto-hide never ran (bundler / native edge case).
-if (typeof SplashScreen.hideAsync === 'function') {
-  setTimeout(() => {
-    void SplashScreen.hideAsync();
-  }, 5000);
-}
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+const iosBuild =
+  Constants.expoConfig?.ios?.buildNumber ??
+  (Constants.expoConfig?.extra as { iosBuildNumber?: string } | undefined)?.iosBuildNumber ??
+  '?';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -54,9 +55,32 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+function BootScreen({ onReady }: { onReady: () => void }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: '#0a0a0f',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+      }}
+      onLayout={onReady}>
+      <Text style={{ color: '#c9a84c', fontSize: 32, fontWeight: '900', letterSpacing: 6 }}>IRONLORE</Text>
+      <Text style={{ color: '#888899', fontSize: 14 }}>Starting…</Text>
+      <Text style={{ color: '#c9a84c', fontSize: 12, marginTop: 8 }}>Build {iosBuild}</Text>
+    </View>
+  );
+}
+
 export default function RootLayout() {
-  useLayoutEffect(() => {
-    void SplashScreen.hideAsync();
+  // Phase 1: boot screen (plain View, no navigator). Phase 2: full app after first layout + splash hide.
+  const [navReady, setNavReady] = useState(false);
+
+  const onBootLayout = useCallback(() => {
+    void SplashScreen.hideAsync().catch(() => {});
+    // Next frame: mount Stack so we never show a blank window between splash and JS UI.
+    requestAnimationFrame(() => setNavReady(true));
   }, []);
 
   useEffect(() => {
@@ -74,6 +98,19 @@ export default function RootLayout() {
       console.error('[IronLore] Notifications.setNotificationHandler failed:', e);
     }
   }, []);
+
+  // Hard fallback: never leave splash up more than 8s.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {});
+      setNavReady(true);
+    }, 8000);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (!navReady) {
+    return <BootScreen onReady={onBootLayout} />;
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0a0a0f' }}>

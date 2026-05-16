@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
@@ -67,7 +68,8 @@ export default function TabIndexLaunchShell() {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 16,
-      }}>
+      }}
+      onLayout={() => void SplashScreen.hideAsync().catch(() => {})}>
       <Text style={{ color: '#c9a84c', fontSize: 28, fontWeight: '900', letterSpacing: 6 }}>IRONLORE</Text>
       <ActivityIndicator color="#c9a84c" size="large" />
       <Text style={{ color: '#888899', fontSize: 13 }}>Loading…</Text>
