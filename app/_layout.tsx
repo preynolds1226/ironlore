@@ -1,20 +1,12 @@
-import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LazyPremiumProvider } from '@/src/purchases/LazyPremiumProvider';
 import { PaywallModalProvider } from '@/src/purchases/PaywallModalContext';
-
-void SplashScreen.preventAutoHideAsync().catch(() => {});
-
-const iosBuild =
-  Constants.expoConfig?.ios?.buildNumber ??
-  (Constants.expoConfig?.extra as { iosBuildNumber?: string } | undefined)?.iosBuildNumber ??
-  '?';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -55,33 +47,31 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-function BootScreen({ onReady }: { onReady: () => void }) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: '#0a0a0f',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 12,
-      }}
-      onLayout={onReady}>
-      <Text style={{ color: '#c9a84c', fontSize: 32, fontWeight: '900', letterSpacing: 6 }}>IRONLORE</Text>
-      <Text style={{ color: '#888899', fontSize: 14 }}>Starting…</Text>
-      <Text style={{ color: '#c9a84c', fontSize: 12, marginTop: 8 }}>Build {iosBuild}</Text>
-    </View>
-  );
+/** Hide native splash after the root has had time to paint (avoids black flash + stuck splash). */
+function useHideSplashWhenReady() {
+  const hide = useCallback(() => {
+    void SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Do NOT call preventAutoHideAsync here — expo-router already does. Extra prevent without
+    // hide leaves TestFlight stuck on the splash (onLayout under splash may never run).
+    hide();
+    const t1 = setTimeout(hide, 150);
+    const t2 = setTimeout(hide, 600);
+    const t3 = setTimeout(hide, 2500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [hide]);
+
+  return hide;
 }
 
 export default function RootLayout() {
-  // Phase 1: boot screen (plain View, no navigator). Phase 2: full app after first layout + splash hide.
-  const [navReady, setNavReady] = useState(false);
-
-  const onBootLayout = useCallback(() => {
-    void SplashScreen.hideAsync().catch(() => {});
-    // Next frame: mount Stack so we never show a blank window between splash and JS UI.
-    requestAnimationFrame(() => setNavReady(true));
-  }, []);
+  const hideSplash = useHideSplashWhenReady();
 
   useEffect(() => {
     try {
@@ -99,21 +89,10 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Hard fallback: never leave splash up more than 8s.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      void SplashScreen.hideAsync().catch(() => {});
-      setNavReady(true);
-    }, 8000);
-    return () => clearTimeout(t);
-  }, []);
-
-  if (!navReady) {
-    return <BootScreen onReady={onBootLayout} />;
-  }
-
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0a0a0f' }}>
+    <GestureHandlerRootView
+      style={{ flex: 1, backgroundColor: '#0a0a0f' }}
+      onLayout={hideSplash}>
       <ErrorBoundary>
         <LazyPremiumProvider>
           <PaywallModalProvider>
