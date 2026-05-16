@@ -25,9 +25,9 @@ export default (): ExpoConfig => {
       'expo-build-properties',
       {
         ios: {
-          // Disable New Arch on iOS 26 TestFlight: Turbo Module exception swallowing can leave an empty
-          // black window. Still build from source so patch-package RCTTurboModule fix applies if re-enabled.
-          newArchEnabled: false,
+          // Build RN from source so patch-package RCTTurboModule.mm fix is compiled into the binary.
+          // (newArchEnabled: false breaks EAS pod install on this project; launch shell + lazy bundle
+          // address the TestFlight black screen in JS instead.)
           buildReactNativeFromSource: true,
         },
       },
