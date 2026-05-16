@@ -1,26 +1,34 @@
 import React, { useEffect, useState } from 'react';
 
-import { PremiumContext, premiumStubValue, PremiumProvider } from '@/src/purchases/PremiumContext';
+import { PremiumContext, premiumStubValue } from '@/src/purchases/premiumContextBase';
+
+type ProviderComponent = React.ComponentType<{ children: React.ReactNode }>;
 
 /**
- * Renders children immediately with stub premium state, then mounts RevenueCat after the
- * first frame so native Purchases.configure does not block the launch shell from painting.
+ * Stub premium context on first paint; load RevenueCat only after the launch shell is visible.
+ * Importing react-native-purchases from app/_layout.tsx correlated with stuck splash / SIGABRT on iOS 26.
  */
 export function LazyPremiumProvider({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
+  const [PremiumProvider, setPremiumProvider] = useState<ProviderComponent | null>(null);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const frame = requestAnimationFrame(() => {
-      timer = setTimeout(() => setReady(true), 100);
-    });
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void import('@/src/purchases/PremiumProviderImpl')
+        .then((mod) => {
+          if (!cancelled) setPremiumProvider(() => mod.PremiumProvider);
+        })
+        .catch((e) => {
+          console.error('[IronLore] PremiumProviderImpl import failed:', e);
+        });
+    }, 2000);
     return () => {
-      cancelAnimationFrame(frame);
-      if (timer) clearTimeout(timer);
+      cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
 
-  if (!ready) {
+  if (!PremiumProvider) {
     return <PremiumContext.Provider value={premiumStubValue}>{children}</PremiumContext.Provider>;
   }
 

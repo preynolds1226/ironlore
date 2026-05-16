@@ -3,6 +3,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
+import { AppProviders } from '@/src/boot/AppProviders';
+
 type HomeAppModule = { default: React.ComponentType };
 
 const iosBuild =
@@ -10,32 +12,52 @@ const iosBuild =
   (Constants.expoConfig?.extra as { iosBuildNumber?: string } | undefined)?.iosBuildNumber ??
   '?';
 
+const launchProbe =
+  (Constants.expoConfig?.extra as { launchProbe?: boolean } | undefined)?.launchProbe === true;
+
+type BootPhase = 'shell' | 'providers' | 'home-import' | 'ready' | 'error';
+
 /**
- * Thin launch shell: paints immediately on TestFlight, then dynamically loads the heavy
- * home bundle. Import-time failures in home-app.tsx are caught here (ErrorBoundary cannot).
+ * Launch shell: paints immediately, dismisses splash, then loads AppProviders + home-app.
+ * Import-time failures in home-app are caught here (root ErrorBoundary cannot).
  */
 export default function TabIndexLaunchShell() {
   const [HomeApp, setHomeApp] = useState<React.ComponentType | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<BootPhase>('shell');
 
   useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => {});
     let cancelled = false;
-    void import('./home-app')
-      .then((mod: HomeAppModule) => {
-        if (!cancelled) setHomeApp(() => mod.default);
-      })
-      .catch((e: unknown) => {
+
+    (async () => {
+      try {
+        if (!cancelled) setPhase('home-import');
+        const mod: HomeAppModule = await import('./home-app');
+        if (cancelled) return;
+        setHomeApp(() => mod.default);
+        if (!cancelled) setPhase('ready');
+      } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error('[IronLore] home-app import failed:', e);
-        if (!cancelled) setImportError(msg);
-      });
+        if (!cancelled) {
+          setImportError(msg);
+          setPhase('error');
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
   if (HomeApp) {
-    return <HomeApp />;
+    return (
+      <AppProviders>
+        <HomeApp />
+      </AppProviders>
+    );
   }
 
   if (importError) {
@@ -72,7 +94,12 @@ export default function TabIndexLaunchShell() {
       onLayout={() => void SplashScreen.hideAsync().catch(() => {})}>
       <Text style={{ color: '#c9a84c', fontSize: 28, fontWeight: '900', letterSpacing: 6 }}>IRONLORE</Text>
       <ActivityIndicator color="#c9a84c" size="large" />
-      <Text style={{ color: '#888899', fontSize: 13 }}>Loading…</Text>
+      <Text style={{ color: '#888899', fontSize: 13 }}>
+        {phase === 'home-import' ? 'Loading app…' : 'Starting…'}
+      </Text>
+      {launchProbe ? (
+        <Text style={{ color: '#555566', fontSize: 11, marginTop: 4 }}>boot: {phase}</Text>
+      ) : null}
       <Text style={{ color: '#555566', fontSize: 11, marginTop: 8 }}>Build {iosBuild}</Text>
     </View>
   );

@@ -1,12 +1,8 @@
-import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
 import React, { useCallback, useEffect } from 'react';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-import { LazyPremiumProvider } from '@/src/purchases/LazyPremiumProvider';
-import { PaywallModalProvider } from '@/src/purchases/PaywallModalContext';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -47,65 +43,40 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-/** Hide native splash after the root has had time to paint (avoids black flash + stuck splash). */
 function useHideSplashWhenReady() {
   const hide = useCallback(() => {
     void SplashScreen.hideAsync().catch(() => {});
   }, []);
 
   useEffect(() => {
-    // Do NOT call preventAutoHideAsync here — expo-router already does. Extra prevent without
-    // hide leaves TestFlight stuck on the splash (onLayout under splash may never run).
     hide();
-    const t1 = setTimeout(hide, 150);
-    const t2 = setTimeout(hide, 600);
-    const t3 = setTimeout(hide, 2500);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
+    const timers = [50, 150, 400, 800, 1500, 3000].map((ms) => setTimeout(hide, ms));
+    return () => timers.forEach(clearTimeout);
   }, [hide]);
 
   return hide;
 }
 
+/**
+ * Minimal root layout: no RevenueCat, paywall, or notifications here.
+ * Those load from the tab launch shell after the first frame (see AppProviders).
+ */
 export default function RootLayout() {
   const hideSplash = useHideSplashWhenReady();
-
-  useEffect(() => {
-    try {
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldShowBanner: true,
-          shouldShowList: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-        }),
-      });
-    } catch (e) {
-      console.error('[IronLore] Notifications.setNotificationHandler failed:', e);
-    }
-  }, []);
 
   return (
     <GestureHandlerRootView
       style={{ flex: 1, backgroundColor: '#0a0a0f' }}
       onLayout={hideSplash}>
       <ErrorBoundary>
-        <LazyPremiumProvider>
-          <PaywallModalProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: '#0a0a0f' },
-              }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-            </Stack>
-          </PaywallModalProvider>
-        </LazyPremiumProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: '#0a0a0f' },
+          }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
       </ErrorBoundary>
     </GestureHandlerRootView>
   );
