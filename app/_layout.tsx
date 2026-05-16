@@ -1,43 +1,50 @@
 import * as SplashScreen from 'expo-splash-screen';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { PaywallModalProvider } from '@/src/purchases/PaywallModalContext';
 import { PremiumProvider } from '@/src/purchases/PremiumContext';
 
-// Hard deadline: if expo-router's NavigationContainer.onReady never fires on iOS 26
-// (due to a Turbo Module hang swallowing the startup callback), this guarantees the
-// native splash screen hides within 4 seconds regardless. hideAsync() is a no-op if
-// the splash was already hidden by expo-router's normal path.
+// Last-resort module-level deadline: fires if React never mounts at all (rare).
+// The component-level useEffect below is the primary path.
 if (typeof SplashScreen.hideAsync === 'function') {
   setTimeout(() => {
     void SplashScreen.hideAsync();
-  }, 4000);
+  }, 5000);
 }
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
-  { hasError: boolean }
+  { hasError: boolean; errorMessage: string }
 > {
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, errorMessage: '' };
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { hasError: true, errorMessage: msg };
+  }
+
+  override componentDidCatch(error: unknown) {
+    console.error('[IronLore] ErrorBoundary caught:', error);
+    void SplashScreen.hideAsync().catch(() => {});
   }
 
   override render() {
     if (this.state.hasError) {
       return (
         <View style={{ flex: 1, backgroundColor: '#1a0a0a', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-          <Text style={{ color: '#ff6b6b', fontSize: 20, fontWeight: '800', marginBottom: 12, textAlign: 'center' }}>
+          <Text style={{ color: '#ff6b6b', fontSize: 22, fontWeight: '900', marginBottom: 16, textAlign: 'center' }}>
             IronLore failed to start
           </Text>
-          <Text style={{ color: '#ffffff', fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
-            Force-quit the app and reopen it. If this keeps happening, delete and reinstall.
+          <Text style={{ color: '#ffffff', fontSize: 15, textAlign: 'center', lineHeight: 24, marginBottom: 12 }}>
+            Force-quit and reopen the app.
+          </Text>
+          <Text style={{ color: '#888899', fontSize: 12, textAlign: 'center', lineHeight: 18 }}>
+            {this.state.errorMessage || 'Unknown error'}
           </Text>
         </View>
       );
@@ -47,11 +54,22 @@ class ErrorBoundary extends React.Component<
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Primary path: hide splash as soon as the root layout mounts.
+    // This is more reliable than a module-level timer because we know React is
+    // running. expo-router also hides it on NavigationContainer.onReady, but on
+    // iOS 26 that callback can silently fail due to Turbo Module issues.
+    const timer = setTimeout(() => {
+      void SplashScreen.hideAsync();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <ErrorBoundary>
       <PremiumProvider>
         <PaywallModalProvider>
-          <Stack screenOptions={{ headerShown: false }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0a0a0f' } }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           </Stack>

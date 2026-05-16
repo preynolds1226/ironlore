@@ -3475,8 +3475,8 @@ export default function HomeScreen() {
 
   useEffect(() => {
     // Safety timeout: if getSession hangs (slow/no network on first launch),
-    // unblock the UI after 5s so the app never appears frozen on the splash screen.
-    const authTimeout = setTimeout(() => setAuthChecked(true), 5000);
+    // unblock the UI after 3s so the app never appears frozen on the splash screen.
+    const authTimeout = setTimeout(() => setAuthChecked(true), 3000);
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(authTimeout);
       if (session?.user) {
@@ -3722,7 +3722,12 @@ export default function HomeScreen() {
   }
 
   if (!authChecked) {
-    return <View style={{ flex: 1, backgroundColor: IronLore.colors.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={IronLore.colors.gold} size="large" /></View>;
+    return (
+      <View style={{ flex: 1, backgroundColor: IronLore.colors.bg, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <ActivityIndicator color={IronLore.colors.gold} size="large" />
+        <Text style={{ color: IronLore.colors.muted, fontSize: 14 }}>Loading…</Text>
+      </View>
+    );
   }
 
   if (!userId) return <AuthScreen onAuth={() => {}} />;
