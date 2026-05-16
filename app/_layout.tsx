@@ -1,13 +1,14 @@
+import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
-import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
+import React, { useEffect, useLayoutEffect } from 'react';
 import { Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { PaywallModalProvider } from '@/src/purchases/PaywallModalContext';
 import { PremiumProvider } from '@/src/purchases/PremiumContext';
 
-// Last-resort module-level deadline: fires if React never mounts at all (rare).
-// The component-level useEffect below is the primary path.
+// Last resort: splash auto-hide never ran (bundler / native edge case).
 if (typeof SplashScreen.hideAsync === 'function') {
   setTimeout(() => {
     void SplashScreen.hideAsync();
@@ -54,27 +55,42 @@ class ErrorBoundary extends React.Component<
 }
 
 export default function RootLayout() {
+  useLayoutEffect(() => {
+    void SplashScreen.hideAsync();
+  }, []);
+
   useEffect(() => {
-    // Primary path: hide splash as soon as the root layout mounts.
-    // This is more reliable than a module-level timer because we know React is
-    // running. expo-router also hides it on NavigationContainer.onReady, but on
-    // iOS 26 that callback can silently fail due to Turbo Module issues.
-    const timer = setTimeout(() => {
-      void SplashScreen.hideAsync();
-    }, 1500);
-    return () => clearTimeout(timer);
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        }),
+      });
+    } catch (e) {
+      console.error('[IronLore] Notifications.setNotificationHandler failed:', e);
+    }
   }, []);
 
   return (
-    <ErrorBoundary>
-      <PremiumProvider>
-        <PaywallModalProvider>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0a0a0f' } }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          </Stack>
-        </PaywallModalProvider>
-      </PremiumProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0a0a0f' }}>
+      <ErrorBoundary>
+        <PremiumProvider>
+          <PaywallModalProvider>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: '#0a0a0f' },
+              }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+            </Stack>
+          </PaywallModalProvider>
+        </PremiumProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

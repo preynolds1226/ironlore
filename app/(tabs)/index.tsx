@@ -17,21 +17,16 @@ import { supabase } from '@/src/data/supabaseClient';
 import { ACHIEVEMENTS, CLASSES, GOAL_PATHS, SHOP_ITEMS } from '@/src/domain/gameData';
 import { IronLore } from '@/src/ui/ironloreTokens';
 import { AppleHealthHomeRow } from '@/src/components/AppleHealthHomeRow';
+import { SubtreeErrorBoundary } from '@/src/components/SubtreeErrorBoundary';
 import { CoachScreen } from '@/src/screens/CoachScreen';
 import { NutritionScreen as NutritionScreenComponent } from '@/src/screens/NutritionScreen';
 import { SettingsSubscriptionCard } from '@/src/purchases/SettingsSubscriptionCard';
 import { SubscriptionDebugPanel } from '@/src/purchases/SubscriptionDebugPanel';
 import { isRevenueCatNativeAvailable } from '@/src/purchases/isRevenueCatNativeAvailable';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Notification handler is configured in app/_layout.tsx after mount —
+// configuring at module load can touch native during the Metro bundle churn and
+// correlate with blank first frames on Release / TestFlight.
 
 // ============================================================
 // CONSTANTS
@@ -3853,7 +3848,15 @@ export default function HomeScreen() {
             <Text style={[s.waterValue, cleanMode && sc.waterValue]}>{Math.round(waterOz)}/{waterGoalOz}oz</Text>
           </TouchableOpacity>
 
-          <AppleHealthHomeRow onTodayStepsChange={onAppleHealthSteps} cleanMode={cleanMode} />
+          <SubtreeErrorBoundary
+            fallback={
+              <Text style={{ ...IronLore.type.body, color: IronLore.colors.muted, marginTop: 14, fontSize: 12 }}>
+                Apple Health data unavailable — open Settings to allow Health access.
+              </Text>
+            }
+          >
+            <AppleHealthHomeRow onTodayStepsChange={onAppleHealthSteps} cleanMode={cleanMode} />
+          </SubtreeErrorBoundary>
         </View>
 
         {!cleanMode && (
