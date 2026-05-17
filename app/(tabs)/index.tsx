@@ -25,6 +25,7 @@ export default function TabIndexLaunchShell() {
   const [phase, setPhase] = useState<BootPhase>('shell');
 
   useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => {});
     let cancelled = false;
 
     (async () => {

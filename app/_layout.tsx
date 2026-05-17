@@ -1,6 +1,6 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -43,10 +43,18 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-function useHideSplashOnLayout() {
-  return useCallback(() => {
+function useDismissNativeSplash() {
+  const hide = useCallback(() => {
     void SplashScreen.hideAsync().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    hide();
+    const timers = [0, 100, 300, 800, 2000].map((ms) => setTimeout(hide, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [hide]);
+
+  return hide;
 }
 
 /**
@@ -54,7 +62,7 @@ function useHideSplashOnLayout() {
  * Those load from the tab launch shell after the first frame (see AppProviders).
  */
 export default function RootLayout() {
-  const hideSplash = useHideSplashOnLayout();
+  const hideSplash = useDismissNativeSplash();
 
   return (
     <GestureHandlerRootView
