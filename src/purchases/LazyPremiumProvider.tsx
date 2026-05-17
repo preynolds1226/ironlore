@@ -21,7 +21,7 @@ export function LazyPremiumProvider({ children }: { children: React.ReactNode })
         .catch((e) => {
           console.error('[IronLore] PremiumProviderImpl import failed:', e);
         });
-    }, 2000);
+    }, 5000);
     return () => {
       cancelled = true;
       clearTimeout(timer);

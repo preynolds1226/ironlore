@@ -16,7 +16,7 @@ export function LazyPaywallModalProvider({ children }: { children: React.ReactNo
         .catch((e) => {
           console.error('[IronLore] PaywallModalProvider import failed:', e);
         });
-    }, 2500);
+    }, 5500);
     return () => {
       cancelled = true;
       clearTimeout(timer);

@@ -15,7 +15,14 @@
     },
     "production": {
       "environment": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_ASC_API_KEY_PATH": "./AuthKey_GXH8R3G48L.p8",
+        "EXPO_ASC_KEY_ID": "GXH8R3G48L",
+        "EXPO_ASC_ISSUER_ID": "10245641-6754-41b0-9f6a-368f4ca5a067",
+        "EXPO_APPLE_TEAM_ID": "6TP2K9VXQ4",
+        "EXPO_APPLE_TEAM_TYPE": "INDIVIDUAL"
+      }
     }
   },
   "submit": {

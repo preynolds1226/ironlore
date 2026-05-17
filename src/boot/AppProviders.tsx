@@ -1,4 +1,3 @@
-import * as Notifications from 'expo-notifications';
 import React, { useEffect } from 'react';
 
 import { LazyPaywallModalProvider } from '@/src/purchases/LazyPaywallModalProvider';
@@ -10,19 +9,24 @@ import { LazyPremiumProvider } from '@/src/purchases/LazyPremiumProvider';
  */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    try {
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldShowBanner: true,
-          shouldShowList: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-        }),
-      });
-    } catch (e) {
-      console.error('[IronLore] Notifications.setNotificationHandler failed:', e);
-    }
+    const timer = setTimeout(() => {
+      void import('expo-notifications')
+        .then((Notifications) => {
+          Notifications.setNotificationHandler({
+            handleNotification: async () => ({
+              shouldShowAlert: true,
+              shouldShowBanner: true,
+              shouldShowList: true,
+              shouldPlaySound: true,
+              shouldSetBadge: false,
+            }),
+          });
+        })
+        .catch((e) => {
+          console.error('[IronLore] Notifications.setNotificationHandler failed:', e);
+        });
+    }, 3000);
+    return () => clearTimeout(timer);
   }, []);
 
   return (

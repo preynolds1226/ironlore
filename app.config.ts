@@ -21,14 +21,18 @@ export default (): ExpoConfig => {
 
   const plugins = [
     ...(base.plugins ?? []),
+    './plugins/withFmtConstevalFix.js',
     [
       'expo-build-properties',
       {
         ios: {
-          // Build RN from source so patch-package RCTTurboModule.mm fix is compiled into the binary.
-          // (newArchEnabled: false breaks EAS pod install on this project; launch shell + lazy bundle
-          // address the TestFlight black screen in JS instead.)
+          // Legacy bridge avoids iOS 26 TurboModule SIGABRT on void native calls at launch.
+          newArchEnabled: false,
+          // Build RN from source so patch-package RCTTurboModule.mm fix is compiled if New Arch is re-enabled.
           buildReactNativeFromSource: true,
+        },
+        android: {
+          newArchEnabled: false,
         },
       },
     ],

@@ -3,9 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
-import { AppProviders } from '@/src/boot/AppProviders';
-
-type HomeAppModule = { default: React.ComponentType };
+type HomeEntryModule = { default: React.ComponentType };
 
 const iosBuild =
   Constants.expoConfig?.ios?.buildNumber ??
@@ -22,20 +20,22 @@ type BootPhase = 'shell' | 'providers' | 'home-import' | 'ready' | 'error';
  * Import-time failures in home-app are caught here (root ErrorBoundary cannot).
  */
 export default function TabIndexLaunchShell() {
-  const [HomeApp, setHomeApp] = useState<React.ComponentType | null>(null);
+  const [HomeEntry, setHomeEntry] = useState<React.ComponentType | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [phase, setPhase] = useState<BootPhase>('shell');
 
   useEffect(() => {
-    void SplashScreen.hideAsync().catch(() => {});
     let cancelled = false;
 
     (async () => {
+      // Let the native splash + launch shell paint before pulling in home-app / providers.
+      await new Promise((r) => setTimeout(r, 500));
+      if (cancelled) return;
       try {
         if (!cancelled) setPhase('home-import');
-        const mod: HomeAppModule = await import('./home-app');
+        const mod: HomeEntryModule = await import('./home-entry');
         if (cancelled) return;
-        setHomeApp(() => mod.default);
+        setHomeEntry(() => mod.default);
         if (!cancelled) setPhase('ready');
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -52,12 +52,8 @@ export default function TabIndexLaunchShell() {
     };
   }, []);
 
-  if (HomeApp) {
-    return (
-      <AppProviders>
-        <HomeApp />
-      </AppProviders>
-    );
+  if (HomeEntry) {
+    return <HomeEntry />;
   }
 
   if (importError) {
@@ -91,7 +87,9 @@ export default function TabIndexLaunchShell() {
         justifyContent: 'center',
         gap: 16,
       }}
-      onLayout={() => void SplashScreen.hideAsync().catch(() => {})}>
+      onLayout={() => {
+        void SplashScreen.hideAsync().catch(() => {});
+      }}>
       <Text style={{ color: '#c9a84c', fontSize: 28, fontWeight: '900', letterSpacing: 6 }}>IRONLORE</Text>
       <ActivityIndicator color="#c9a84c" size="large" />
       <Text style={{ color: '#888899', fontSize: 13 }}>

@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/src/data/supabaseClient';
 import { ACHIEVEMENTS, CLASSES, GOAL_PATHS, SHOP_ITEMS } from '@/src/domain/gameData';
 import { IronLore } from '@/src/ui/ironloreTokens';
-import { AppleHealthHomeRow } from '@/src/components/AppleHealthHomeRow';
+import { LazyAppleHealthHomeRow } from '@/src/components/LazyAppleHealthHomeRow';
 import { SubtreeErrorBoundary } from '@/src/components/SubtreeErrorBoundary';
 import { CoachScreen } from '@/src/screens/CoachScreen';
 import { NutritionScreen as NutritionScreenComponent } from '@/src/screens/NutritionScreen';
@@ -3855,7 +3855,7 @@ export default function HomeScreen() {
               </Text>
             }
           >
-            <AppleHealthHomeRow onTodayStepsChange={onAppleHealthSteps} cleanMode={cleanMode} />
+            <LazyAppleHealthHomeRow onTodayStepsChange={onAppleHealthSteps} cleanMode={cleanMode} />
           </SubtreeErrorBoundary>
         </View>
 
