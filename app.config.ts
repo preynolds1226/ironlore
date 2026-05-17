@@ -26,13 +26,9 @@ export default (): ExpoConfig => {
       'expo-build-properties',
       {
         ios: {
-          // Legacy bridge avoids iOS 26 TurboModule SIGABRT on void native calls at launch.
-          newArchEnabled: false,
-          // Build RN from source so patch-package RCTTurboModule.mm fix is compiled if New Arch is re-enabled.
+          // Build RN from source so patch-package RCTTurboModule.mm fix is compiled into the binary.
+          // (newArchEnabled: false breaks EAS pod install on this project; deferred JS + patch address launch.)
           buildReactNativeFromSource: true,
-        },
-        android: {
-          newArchEnabled: false,
         },
       },
     ],
