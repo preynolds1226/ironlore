@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 import { AppProviders } from '@/src/boot/AppProviders';
+import { bootLog } from '@/src/debug/bootLog';
+import { BootTraceOverlay } from '@/src/debug/BootTraceOverlay';
 
 function HomeLoadingFallback() {
   return (
@@ -49,15 +51,31 @@ export default function HomeEntry() {
   const [HomeApp, setHomeApp] = useState<React.ComponentType | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // #region agent log
+  bootLog('home-entry.tsx:render', 'home_entry_render', 'H-E', {
+    hasHomeApp: !!HomeApp,
+    hasError: !!loadError,
+  });
+  // #endregion
+
   useEffect(() => {
     let cancelled = false;
+    // #region agent log
+    bootLog('home-entry.tsx:import', 'home_app_import_start', 'H-E');
+    // #endregion
     void import('./home-app')
       .then((mod) => {
+        // #region agent log
+        bootLog('home-entry.tsx:import', 'home_app_import_ok', 'H-E');
+        // #endregion
         if (!cancelled) setHomeApp(() => mod.default);
       })
       .catch((e: unknown) => {
         const msg = e instanceof Error ? e.message : String(e);
         console.error('[IronLore] home-app import failed:', e);
+        // #region agent log
+        bootLog('home-entry.tsx:import', 'home_app_import_fail', 'H-D', { msg });
+        // #endregion
         if (!cancelled) setLoadError(msg);
       });
     return () => {
@@ -74,6 +92,7 @@ export default function HomeEntry() {
       ) : (
         <HomeLoadingFallback />
       )}
+      <BootTraceOverlay />
     </AppProviders>
   );
 }

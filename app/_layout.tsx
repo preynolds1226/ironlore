@@ -4,6 +4,9 @@ import React, { useCallback, useEffect } from 'react';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { bootLog } from '@/src/debug/bootLog';
+import { BootTraceOverlay } from '@/src/debug/BootTraceOverlay';
+
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; errorMessage: string }
@@ -64,10 +67,19 @@ function useDismissNativeSplash() {
 export default function RootLayout() {
   const hideSplash = useDismissNativeSplash();
 
+  // #region agent log
+  bootLog('app/_layout.tsx:render', 'root_layout_render', 'H-B');
+  // #endregion
+
   return (
     <GestureHandlerRootView
       style={{ flex: 1, backgroundColor: '#0a0a0f' }}
-      onLayout={hideSplash}>
+      onLayout={() => {
+        // #region agent log
+        bootLog('app/_layout.tsx:onLayout', 'root_layout_onLayout', 'H-F');
+        // #endregion
+        hideSplash();
+      }}>
       <ErrorBoundary>
         <Stack
           screenOptions={{
@@ -78,6 +90,7 @@ export default function RootLayout() {
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
       </ErrorBoundary>
+      <BootTraceOverlay />
     </GestureHandlerRootView>
   );
 }

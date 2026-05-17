@@ -3,6 +3,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
+import { bootLog } from '@/src/debug/bootLog';
+import { BootTraceOverlay } from '@/src/debug/BootTraceOverlay';
+
 type HomeEntryModule = { default: React.ComponentType };
 
 const iosBuild =
@@ -24,23 +27,36 @@ export default function TabIndexLaunchShell() {
   const [importError, setImportError] = useState<string | null>(null);
   const [phase, setPhase] = useState<BootPhase>('shell');
 
+  // #region agent log
+  bootLog('app/(tabs)/index.tsx:render', 'tab_index_render', 'H-B', { phase, hasHomeEntry: !!HomeEntry });
+  // #endregion
+
   useEffect(() => {
+    // #region agent log
+    bootLog('app/(tabs)/index.tsx:effect', 'tab_index_mounted', 'H-B');
+    // #endregion
     void SplashScreen.hideAsync().catch(() => {});
     let cancelled = false;
 
     (async () => {
-      // Let the native splash + launch shell paint before pulling in home-app / providers.
-      await new Promise((r) => setTimeout(r, 500));
-      if (cancelled) return;
       try {
         if (!cancelled) setPhase('home-import');
+        // #region agent log
+        bootLog('app/(tabs)/index.tsx:import', 'home_entry_import_start', 'H-C');
+        // #endregion
         const mod: HomeEntryModule = await import('./home-entry');
         if (cancelled) return;
+        // #region agent log
+        bootLog('app/(tabs)/index.tsx:import', 'home_entry_import_ok', 'H-C');
+        // #endregion
         setHomeEntry(() => mod.default);
         if (!cancelled) setPhase('ready');
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error('[IronLore] home-app import failed:', e);
+        // #region agent log
+        bootLog('app/(tabs)/index.tsx:import', 'home_entry_import_fail', 'H-D', { msg });
+        // #endregion
         if (!cancelled) {
           setImportError(msg);
           setPhase('error');
@@ -100,6 +116,7 @@ export default function TabIndexLaunchShell() {
         <Text style={{ color: '#555566', fontSize: 11, marginTop: 4 }}>boot: {phase}</Text>
       ) : null}
       <Text style={{ color: '#555566', fontSize: 11, marginTop: 8 }}>Build {iosBuild}</Text>
+      <BootTraceOverlay />
     </View>
   );
 }

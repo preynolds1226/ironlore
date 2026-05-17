@@ -13,6 +13,7 @@ import * as Sharing from 'expo-sharing';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Haptics from 'expo-haptics';
 
+import { bootLog } from '@/src/debug/bootLog';
 import { supabase } from '@/src/data/supabaseClient';
 import { ACHIEVEMENTS, CLASSES, GOAL_PATHS, SHOP_ITEMS } from '@/src/domain/gameData';
 import { IronLore } from '@/src/ui/ironloreTokens';
@@ -3535,17 +3536,40 @@ export default function HomeScreen() {
   }
 
   useEffect(() => {
+    // #region agent log
+    bootLog('home-app.tsx:HomeScreen', 'home_screen_mounted', 'H-G');
+    // #endregion
     AsyncStorage.getItem('cleanMode').then(val => {
       if (val === 'true') setCleanMode(true);
     });
-    // Register push notifications
-    if (Device.isDevice) {
-      Notifications.getPermissionsAsync().then(({ status }) => {
-        if (status !== 'granted') {
-          Notifications.requestPermissionsAsync();
+  }, []);
+
+  // Defer notification permission prompts — sync TM calls at launch caused SIGABRT on iOS 26 TestFlight.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          // #region agent log
+          bootLog('home-app.tsx:notifications', 'notifications_defer_start', 'H-I');
+          // #endregion
+          if (!Device.isDevice) return;
+          const { status } = await Notifications.getPermissionsAsync();
+          if (status !== 'granted') {
+            await Notifications.requestPermissionsAsync();
+          }
+          // #region agent log
+          bootLog('home-app.tsx:notifications', 'notifications_defer_ok', 'H-I', { status });
+          // #endregion
+        } catch (e: unknown) {
+          // #region agent log
+          bootLog('home-app.tsx:notifications', 'notifications_defer_fail', 'H-I', {
+            msg: e instanceof Error ? e.message : String(e),
+          });
+          // #endregion
         }
-      });
-    }
+      })();
+    }, 8000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
